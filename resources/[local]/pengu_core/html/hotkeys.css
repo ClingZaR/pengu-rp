@@ -1,0 +1,405 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --accent:  #E1C7F9;
+  --accent2: #c084fc;
+  --icon:    rgba(225, 199, 249, 0.42);
+  --border:  rgba(225, 199, 249, 0.14);
+  --div:     rgba(225, 199, 249, 0.07);
+  --font:    Arial, 'Helvetica Neue', sans-serif;
+}
+
+html, body {
+  width: 100vw; height: 100vh;
+  overflow: hidden;
+  background: transparent;
+  font-family: var(--font);
+}
+
+.hidden { display: none !important; }
+
+/* ── Overlay ─────────────────────────────────────────── */
+#overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 2, 14, 0.30);
+  backdrop-filter: blur(5px);
+}
+
+/* ── Panel — glass, no black ─────────────────────────── */
+#panel {
+  background: linear-gradient(
+    155deg,
+    rgba(225, 199, 249, 0.09) 0%,
+    rgba(139, 92, 246, 0.05) 60%,
+    rgba(192, 132, 252, 0.07) 100%
+  );
+  backdrop-filter: blur(40px) saturate(1.7);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  width: 680px;
+  overflow: hidden;
+  box-shadow:
+    0 0 0 1px rgba(225, 199, 249, 0.06) inset,
+    0 0 80px rgba(192, 132, 252, 0.10),
+    0 20px 55px rgba(0, 0, 0, 0.22);
+}
+
+/* ── Header ──────────────────────────────────────────── */
+#hdr {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 22px;
+  border-bottom: 1px solid var(--div);
+}
+
+#hdr-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+#hdr-dot {
+  width: 6px; height: 6px;
+  background: var(--accent);
+  border-radius: 50%;
+  box-shadow: 0 0 10px var(--accent), 0 0 20px rgba(225, 199, 249, 0.4);
+  flex-shrink: 0;
+}
+
+#hdr-close {
+  cursor: pointer;
+  color: rgba(225, 199, 249, 0.25);
+  width: 16px; height: 16px;
+  transition: color 0.15s;
+}
+#hdr-close:hover { color: var(--accent); }
+#hdr-close svg { width: 16px; height: 16px; }
+
+/* ── Keybind grid ────────────────────────────────────── */
+#grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+.col {
+  padding: 18px 20px;
+  border-right: 1px solid var(--div);
+}
+.col:last-child { border-right: none; }
+
+.col-title {
+  font-size: 0.56rem;
+  font-weight: 700;
+  letter-spacing: 0.20em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 13px;
+  opacity: 0.85;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(225, 199, 249, 0.04);
+}
+.row:last-child { border-bottom: none; }
+
+/* Row icon */
+.ri {
+  width: 13px;
+  height: 13px;
+  color: var(--icon);
+  flex-shrink: 0;
+}
+
+/* Key chip */
+.key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  padding: 3px 6px;
+  background: rgba(225, 199, 249, 0.08);
+  border: 1px solid rgba(225, 199, 249, 0.20);
+  border-bottom: 2px solid rgba(225, 199, 249, 0.28);
+  border-radius: 5px;
+  font-size: 0.63rem;
+  font-weight: 700;
+  color: var(--accent);
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-family: var(--font);
+  letter-spacing: 0.04em;
+}
+
+.desc {
+  font-size: 0.73rem;
+  color: rgba(255, 255, 255, 0.48);
+}
+
+/* ── HUD icon legend ─────────────────────────────────── */
+#legend {
+  padding: 13px 22px 15px;
+  border-top: 1px solid var(--div);
+}
+
+.leg-title {
+  font-size: 0.56rem;
+  font-weight: 700;
+  letter-spacing: 0.20em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 11px;
+  opacity: 0.85;
+}
+
+.leg-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 9px 6px;
+}
+
+.leg {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.li, .li-fill {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+}
+
+.leg span {
+  font-size: 0.68rem;
+  color: rgba(255, 255, 255, 0.50);
+}
+
+/* ── Footer ──────────────────────────────────────────── */
+#ftr {
+  padding: 10px 22px;
+  border-top: 1px solid var(--div);
+  font-size: 0.63rem;
+  color: rgba(225, 199, 249, 0.22);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.key-sm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  padding: 2px 5px;
+  background: rgba(225, 199, 249, 0.07);
+  border: 1px solid rgba(225, 199, 249, 0.18);
+  border-bottom: 2px solid rgba(225, 199, 249, 0.22);
+  border-radius: 4px;
+  font-size: 0.58rem;
+  font-weight: 700;
+  color: rgba(225, 199, 249, 0.40);
+  font-family: var(--font);
+}
+
+
+/* ── Cursor-release hint ─────────────────────────────── */
+#cursor-hint {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(20, 8, 35, 0.72);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 9px 18px;
+  font-family: var(--font);
+  font-size: 0.77rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.80);
+  cursor: pointer;
+  z-index: 10000;
+  box-shadow: 0 0 30px rgba(192, 132, 252, 0.12), 0 8px 24px rgba(0, 0, 0, 0.30);
+}
+#cursor-hint b { color: var(--accent); }
+#cursor-hint:hover { border-color: var(--accent); }
+
+/* ── PD location hold-Alt progress ring ──────────────── */
+/* Centred ring that wraps the ox_target eye (which is already shown at screen centre
+   while Alt is held), styled IDENTICALLY to the ox_target eye-ring so PD interactions
+   look the same as picking up a spike. #pdloc-ring is just a show/hide wrapper. */
+#pdloc-ring { pointer-events: none; }
+#pdloc-ring-circle {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: 54px;
+  height: 54px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  pointer-events: none;
+  background: conic-gradient(#E1C7F9 calc(var(--p, 0) * 360deg), rgba(255, 255, 255, 0.14) 0deg);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3.5px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3.5px));
+  filter: drop-shadow(0 0 4px rgba(225, 199, 249, 0.6));
+}
+#pdloc-ring-label {
+  position: fixed;
+  top: calc(50% + 42px);
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  pointer-events: none;
+  font-family: var(--font);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.88);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+}
+
+/* ── Clothing designer (chief) — right-side panel ────── */
+#cloth-editor {
+  position: fixed;
+  top: 50%;
+  right: 24px;
+  transform: translateY(-50%);
+  width: 330px;
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+  background: rgba(16, 16, 24, 0.82);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 0 60px rgba(192, 132, 252, 0.10), 0 18px 50px rgba(0, 0, 0, 0.45);
+  font-family: var(--font);
+  overflow: hidden;
+}
+#cloth-head {
+  padding: 14px 18px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.82);
+  border-bottom: 1px solid var(--div);
+}
+#cloth-head span { color: var(--accent); }
+#cloth-rows { flex: 1; overflow-y: auto; padding: 6px 10px; }
+.cloth-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 8px;
+  border-bottom: 1px solid rgba(225, 199, 249, 0.05);
+}
+.cloth-row:last-child { border-bottom: none; }
+.cloth-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+  white-space: nowrap;
+}
+.cloth-controls { display: flex; gap: 10px; }
+.cloth-group { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.cloth-group-lbl {
+  font-size: 0.5rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(225, 199, 249, 0.5);
+}
+.cloth-arrows { display: flex; align-items: center; gap: 4px; }
+.cloth-count {
+  min-width: 46px;
+  text-align: center;
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.78);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.cloth-arrow {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(225, 199, 249, 0.08);
+  border: 1px solid rgba(225, 199, 249, 0.20);
+  border-radius: 6px;
+  color: var(--accent);
+  font-size: 0.6rem;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.cloth-arrow:hover { background: rgba(225, 199, 249, 0.18); border-color: var(--accent); }
+#cloth-foot {
+  padding: 12px;
+  border-top: 1px solid var(--div);
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+#cloth-rotate { display: flex; gap: 8px; }
+#cloth-rotate button {
+  flex: 1;
+  padding: 7px;
+  background: rgba(225, 199, 249, 0.07);
+  border: 1px solid rgba(225, 199, 249, 0.18);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: var(--font);
+}
+#cloth-rotate button:hover { border-color: var(--accent); color: var(--accent); }
+#cloth-name {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: #fff;
+  padding: 9px 11px;
+  font-size: 0.8rem;
+  outline: none;
+  font-family: var(--font);
+}
+#cloth-buttons { display: flex; gap: 8px; }
+#cloth-buttons button {
+  flex: 1;
+  padding: 9px;
+  border-radius: 8px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: var(--font);
+  border: 1px solid transparent;
+}
+#cloth-save {
+  background: rgba(225, 199, 249, 0.16);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+#cloth-save:hover { background: rgba(225, 199, 249, 0.26); }
+#cloth-cancel {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.6);
+}
+#cloth-cancel:hover { color: #fff; }

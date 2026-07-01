@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- STATUS BARS (built by app.js, bottom-left) -->
+<div id="status-row" class="hud glass hidden"></div>
+
+<!-- DRUG EFFECT ICONS (built by app.js, above the status bars) -->
+<div id="effects-row" class="hud hidden"></div>
+
+<!-- VOICE METER (bottom-left, below status bars) -->
+<div id="voice" class="hud glass hidden">
+  <svg id="voice-mic" viewBox="0 0 24 24">
+    <rect x="9" y="2" width="6" height="11" rx="3"/>
+    <path d="M5 10v1a7 7 0 0 0 14 0v-1"/>
+    <path d="M12 18v3M8 21h8"/>
+  </svg>
+  <div id="voice-bars">
+    <span class="vb" data-lvl="1"></span>
+    <span class="vb" data-lvl="2"></span>
+    <span class="vb" data-lvl="3"></span>
+  </div>
+  <span id="voice-label">Normal</span>
+</div>
+
+<!-- SPEEDOMETER (glass, bottom-right) -->
+<div id="speedometer" class="hud glass hidden">
+  <div class="spd-top">
+    <div class="spd-readout">
+      <span id="speed-num">0</span>
+      <span id="speed-unit">MPH</span>
+    </div>
+    <div class="spd-side">
+      <svg id="engine-icon" class="hidden" viewBox="0 0 24 24">
+        <path d="M7,4V6H10V8H7L5,10V13H3V10H1V18H3V15H5V18H8L10,20H18V16H20V19H23V9H20V12H18V8H12V6H15V4H7Z"/>
+      </svg>
+      <svg id="belt-icon" class="off" viewBox="0 0 24 24">
+        <path d="M12,2C13.11,2 14,2.9 14,4C14,5.11 13.11,6 12,6A2,2 0 0,1 10,4A2,2 0 0,1 12,2M12.39,14.79C14.03,14.79 15.46,14.89 16.64,15.04C16.7,12.32 16.46,9.92 16,9C15.87,8.73 15.69,8.5 15.5,8.3L7.43,15.22C8.79,15 10.5,14.79 12.39,14.79M7.46,17C7.59,18.74 7.85,20.5 8.27,22H10.34C10.05,21.12 9.84,20.09 9.68,19C9.68,19 12,18.56 14.32,19C14.16,20.09 13.95,21.12 13.66,22H15.73C16.17,20.45 16.43,18.61 16.56,16.79C15.41,16.65 14,16.54 12.39,16.54C10.46,16.54 8.78,16.75 7.46,17M12,7C12,7 9,7 8,9C7.66,9.68 7.44,11.15 7.37,12.96L13.92,7.34C14.47,7.54 15.05,7.84 15.5,8.3L18.57,5.67M18.57,5.67L17.43,4.34L13.92,7.35C14.47,7.54 15.05,7.84 15.5,8.3L18.57,5.67M20.67,15.83C20.58,15.8 19.14,15.33 16.64,15.04C16.63,15.61 16.6,16.2 16.56,16.79C18.81,17.07 20.1,17.5 20.12,17.5L20.67,15.83M7.37,12.96L3.43,16.34L4.32,17.82C4.34,17.81 5.5,17.36 7.46,17C7.35,15.59 7.32,14.2 7.37,12.96Z"/>
+      </svg>
+      <span id="gear-label">N</span>
+    </div>
+  </div>
+  <div class="spd-fuel">
+    <svg id="fuel-icon" viewBox="0 0 24 24">
+      <path d="M4 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16M3 21h12"/>
+      <path d="M14 9h2a2 2 0 0 1 2 2v6a1.5 1.5 0 0 0 3 0V8l-3-3"/>
+      <path d="M7 8h4"/>
+    </svg>
+    <div class="fuel-bar"><div id="fuel-fill"></div></div>
+  </div>
+</div>
+
+<!-- SETTINGS OVERLAY -->
+<div id="settings-overlay" class="hidden">
+  <div id="settings-panel">
+    <div id="sett-header">
+      <span><span id="sett-dot"></span> HUD Settings</span>
+      <span id="sett-close" onclick="Settings.close()">&#10005;</span>
+    </div>
+    <div id="sett-body">
+      <div class="sett-row">
+        <span>Speed Unit</span>
+        <div class="sett-btns">
+          <button id="btn-mph" onclick="Settings.setUnit('MPH')">MPH</button>
+          <button id="btn-kph" onclick="Settings.setUnit('KPH')">KPH</button>
+        </div>
+      </div>
+      <div class="sett-row">
+        <span>Status Icons</span>
+        <label class="tog"><input type="checkbox" id="tog-status" onchange="Settings.toggleEl('status', this.checked)"><span class="tog-track"><span class="tog-thumb"></span></span></label>
+      </div>
+      <div class="sett-row">
+        <span>Speedometer</span>
+        <label class="tog"><input type="checkbox" id="tog-speedo" onchange="Settings.toggleEl('speedo', this.checked)"><span class="tog-track"><span class="tog-thumb"></span></span></label>
+      </div>
+    </div>
+    <div id="sett-footer">
+      <button onclick="Settings.reset()">Reset</button>
+      <button class="btn-primary" onclick="Settings.close()">Done</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

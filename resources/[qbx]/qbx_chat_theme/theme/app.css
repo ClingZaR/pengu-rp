@@ -1,0 +1,303 @@
+/* +==================================================================+
+   |  RP CHAT THEME - rebrand by editing the :root variables below   |
+   +==================================================================+ */
+:root {
+    /* font - app.js may override --font-family from server convar */
+    --rp-font:        Arial, 'Helvetica Neue', Helvetica, sans-serif;
+    --rp-weight:      700;
+    --rp-size:        1.1rem;
+    --rp-line-height: 1.55;
+
+    /* black outline - 1px crisp, 8 directions for full coverage */
+    --outline:
+        -1px -1px 0 #000,  0px -1px 0 #000,  1px -1px 0 #000,
+        -1px  0px 0 #000,                     1px  0px 0 #000,
+        -1px  1px 0 #000,  0px  1px 0 #000,  1px  1px 0 #000;
+
+    /* message colors */
+    --c-ts:           #ffffff;   /* timestamp brackets          */
+    --c-chat:         #ffffff;   /* normal player chat          */
+    --c-uid:          #cccccc;   /* server ID like (106)        */
+    --c-me:           #E1C7F9;   /* /me action  - lavender      */
+    --c-do:           #E1C7F9;   /* /do description - lavender  */
+    --c-ooc:          #aaaaaa;   /* OOC grey                    */
+    --c-dispatch-acc: #88ccff;   /* *** accent marks            */
+    --c-dispatch-tag: #4488ff;   /* [DISPATCH] label            */
+    --c-dispatch-body:#ffffff;   /* dispatch body text          */
+    --c-success-tag:  #00cc44;   /* [SUCCESS] label             */
+    --c-success-body: #ffffff;   /* success body text           */
+    --c-faction-tag:  #4488ff;   /* [Faction | Role] label      */
+    --c-faction-name: #4488ff;   /* officer/faction name        */
+    --c-faction-body: #ffffff;   /* faction body text           */
+    --c-status-tag:   #5BAAFF;   /* [Status Check] label - blue */
+    --c-status-body:  #ffffff;   /* status / death body text    */
+
+    /* chat input */
+    --input-bg:     rgba(0, 0, 0, 0.40);
+    --input-border: rgba(255, 255, 255, 0.12);
+    --input-text:   #ffffff;
+}
+
+/* -- reset ------------------------------------------------------- */
+* {
+    margin: 0;
+    padding: 0;
+    /* let app.js / convar control --font-family for system cards,
+       but force our font on RP lines via .rp-line below */
+    box-sizing: border-box;
+}
+
+/* -- root app ----------------------------------------------------- */
+#app {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-size: var(--rp-size);
+    color: var(--c-chat);
+}
+
+/* -- chat window: fully transparent ------------------------------- */
+.chat-window {
+    height: 25% !important;
+    background: transparent !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    overflow: hidden !important;
+}
+
+.chat-messages {
+    height: 100%;
+    background: transparent !important;
+    margin: 0;
+    padding: 0.1rem 0;
+    font-size: inherit;
+    /* Always scrollable so the scroll position is never reset (which clipped selected text).
+       Scrollbar is hidden via width:0 by default; only shown when chat is open (T). */
+    overflow-y: auto;
+}
+.chat-messages::-webkit-scrollbar { width: 0; }
+.chat-window.chat-open .chat-messages::-webkit-scrollbar { width: 6px; }
+.chat-messages::-webkit-scrollbar-track { background: transparent; }
+.chat-messages::-webkit-scrollbar-thumb { background: rgba(225, 199, 249, 0.4); border-radius: 3px; }
+
+.msg { margin: 0; }
+
+/* -- system/console message cards --------------------------------- */
+/* join/quit/print/default still get a faint dark pill for clarity  */
+.message-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    padding: 0.15rem 0.6rem;
+    overflow-wrap: anywhere;
+    width: fit-content;
+    background: rgba(0, 0, 0, 0.45);
+    border-radius: 0.25rem;
+    margin: 0.1rem 0.5rem;
+    font-size: var(--rp-size);
+    font-weight: var(--rp-weight);
+    font-family: var(--rp-font);
+    text-shadow: var(--outline);
+}
+
+/* icon helpers for system cards */
+.alt {
+    background-image: var(--message-icon-url);
+    background-repeat: no-repeat;
+    background-position: left center;
+    background-size: 1rem;
+    padding-left: 1.5rem;
+}
+.join {
+    background-image: var(--join-icon-url);
+    background-repeat: no-repeat;
+    background-position: left center;
+    background-size: 1rem;
+    padding-left: 1.5rem;
+}
+.quit {
+    background-image: var(--quit-icon-url);
+    background-repeat: no-repeat;
+    background-position: left center;
+    background-size: 1rem;
+    padding-left: 1.5rem;
+}
+.console {
+    background-image: var(--console-icon-url);
+    background-repeat: no-repeat;
+    background-position: left center;
+    background-size: 1rem;
+    padding-left: 1.5rem;
+}
+.author {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    color: var(--text-color);
+}
+.print,
+.print * { font-family: var(--console-font-family) !important; }
+.multiline { margin-left: 0; text-indent: 0; }
+
+/* -- chat input ---------------------------------------------------- */
+.chat-input {
+    background: transparent !important;
+    box-shadow: none !important;
+    border-radius: 0.3rem;
+    top: 28% !important;
+    font-size: var(--rp-size);
+    font-weight: var(--rp-weight);
+    font-family: var(--rp-font);
+}
+
+.chat-input > div.input {
+    align-items: center;
+    background: var(--input-bg) !important;
+    border: 1px solid var(--input-border) !important;
+    border-radius: 0.3rem;
+}
+
+textarea {
+    display: block;
+    min-height: 100% !important;
+    padding: 0;
+    padding-left: 0.75rem;
+    resize: none;
+    box-sizing: content-box;
+    line-height: 1.5rem;
+    font-size: var(--rp-size);
+    font-weight: var(--rp-weight);
+    font-family: var(--rp-font) !important;
+    color: var(--input-text);
+    border-width: 0;
+    background: transparent !important;
+}
+
+.chat-input > div.input::after {
+    content: '';
+    height: 2.5rem;
+    width: 2.5rem;
+    background-image: var(--input-icon-url);
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 1.25rem;
+    opacity: 0.55;
+}
+
+.prefix {
+    height: fit-content;
+    margin: 0;
+    padding-left: 1rem;
+    line-height: 1rem;
+    font-size: var(--rp-size);
+    font-family: var(--rp-font);
+    color: var(--input-text);
+    opacity: 0.65;
+}
+
+.suggestions {
+    padding: 0.2rem 0.6rem;
+    font-size: var(--rp-size);
+    font-family: var(--rp-font);
+    color: var(--input-text);
+    background: var(--input-bg);
+    border-radius: 0.25rem;
+}
+.help     { color: rgba(255,255,255,0.45); font-weight: normal; }
+.disabled { color: rgba(255,255,255,0.45); font-weight: normal; }
+.suggestion { margin: 0.35rem 0; font-weight: 700; }
+.suggestion * { font-family: var(--rp-font) !important; }
+.chat-hide-state { position: absolute; }
+
+/* ==================================================================
+   RP LINES  -  transparent, bold, outlined text over the game world
+   ================================================================== */
+.rp-line {
+    font-family: var(--rp-font) !important;
+    font-weight: var(--rp-weight);
+    font-size: var(--rp-size);
+    line-height: var(--rp-line-height);
+    padding: 0.05rem 0.6rem;
+    overflow-wrap: anywhere;
+    display: block;
+    width: 100%;
+    background: transparent;
+    text-shadow: var(--outline);
+}
+
+/* timestamp */
+.rp-line .ts { color: var(--c-ts); }
+
+/* server ID */
+.rp-line .uid { color: var(--c-uid); }
+
+/* -- normal player chat -- */
+.rp-user { color: var(--c-chat); }
+
+/* proximity speech verb (says / shouts / whispers ...) - muted, not italic */
+.rp-user .say-verb { color: var(--c-uid); font-style: normal; }
+
+/* -- /me - white, no italic -- */
+.rp-me { color: var(--c-me); }
+
+/* -- /do - white, no italic -- */
+.rp-do { color: var(--c-do); }
+
+/* -- /ooc /o /b -- */
+.rp-ooc { color: var(--c-ooc); }
+
+/* -- [DISPATCH] -- */
+.rp-dispatch       { color: var(--c-dispatch-body); }
+.rp-dispatch .acc  { color: var(--c-dispatch-acc); }
+.rp-dispatch .dtag { color: var(--c-dispatch-tag); }
+
+/* -- [SUCCESS] -- */
+.rp-success        { color: var(--c-success-body); }
+.rp-success .stag  { color: var(--c-success-tag); }
+.rp-success .money { color: var(--c-success-tag); }
+
+/* -- Faction / job / [LAW] -- */
+.rp-faction        { color: var(--c-faction-body); }
+.rp-faction .ftag  { color: var(--c-faction-tag); }
+.rp-faction .fn    { color: var(--c-faction-name); }
+.rp-faction .fcolon{ color: var(--c-faction-tag); }   /* the ':' after the name = faction colour */
+.rp-faction .fooc  { color: var(--c-faction-tag); }   /* the (( )) OOC brackets = faction colour  */
+
+/* -- [Status Check] death / medical status line -- */
+.rp-status         { color: var(--c-status-body); }
+.rp-status .stag   { color: var(--c-status-tag); font-weight: 700; }
+
+/* -- Admin / system command output (/pdloc etc.) -- */
+.rp-admin          { color: #ffffff; }
+.rp-admin .atag    { font-weight: 700; color: #E1C7F9; }
+.rp-admin-ok  .atag { color: #7CFFA0; }
+.rp-admin-err .atag { color: #ff5a5a; }
+.rp-admin-info .atag { color: #5BAAFF; }
+
+/* -- chat message timestamp [HH:MM] (injected by theme/app.js) -- exactly like the /me /do .ts -- */
+.chat-ts { color: var(--c-ts); }
+
+/* -- /stats - bracketed stat block -- */
+.rp-stats          { color: #dddddd; line-height: 1.7; }
+.rp-stats .st-head {
+    color: #5BAAFF;
+    font-weight: 700;
+    margin-right: 0.45rem;
+    letter-spacing: 0.02em;
+}
+.rp-stats .st-b    { white-space: nowrap; margin-right: 0.4rem; }
+.rp-stats .st-b b       { color: #5BAAFF; font-weight: 700; }
+.rp-stats .st-b b.money { color: #7CFFA0; font-weight: 700; }
+
+/* -- chat idle fade (reveal on new message, hide after 60s idle) -- */
+.chat-window { transition: opacity 0.45s ease; }
+.chat-window.pengu-chat-idle { opacity: 0 !important; pointer-events: none !important; }
+
+/* -- text selection in message history -- */
+.chat-messages,
+.rp-line,
+.message-wrapper {
+    -webkit-user-select: text;
+    user-select: text;
+    cursor: text;
+}

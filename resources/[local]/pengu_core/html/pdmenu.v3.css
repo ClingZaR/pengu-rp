@@ -1,0 +1,330 @@
+/* ============================================================
+   PenguRP - Police Services menu (garage / wardrobe / armory)
+   Lavender glass theme, matched to pengu_hud + pengu_mdt.
+   ============================================================ */
+:root {
+  --pm-accent:   #E1C7F9;
+  --pm-accent2:  #c084fc;
+  --pm-green:    #7CFFA0;
+  --pm-tint:     rgba(225, 199, 249, 0.13);
+  --pm-tint-2:   rgba(225, 199, 249, 0.22);
+  --pm-border:   rgba(255, 255, 255, 0.09);   /* structural hairline (matches pengu_mdt/hud) */
+  --pm-accent-b: rgba(225, 199, 249, 0.16);   /* lavender border for accent badges only */
+  --pm-glass:    rgba(16, 16, 24, 0.72);
+  --pm-glass-2:  rgba(26, 24, 36, 0.92);
+  --pm-text:     #ffffff;
+  --pm-text-2:   rgba(255, 255, 255, 0.72);
+  --pm-text-mut: rgba(255, 255, 255, 0.50);
+  --pm-shadow:   0 18px 50px rgba(0, 0, 0, 0.55);
+  --pm-font:     Arial, 'Helvetica Neue', sans-serif;
+}
+
+/* Backdrop */
+#pd-menu {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-end;   /* the panel is a drawer pinned to the RIGHT */
+  background: transparent;      /* no dim - the game stays fully visible */
+  font-family: var(--pm-font);
+  z-index: 50;
+}
+#pd-menu.hidden { display: none !important; }
+
+/* Panel - a tall right-side drawer. Low opacity + a LIGHT blur so the game is
+   clearly visible through it, a thin lavender edge, and NO drop shadow (the old
+   shadow read as a thick black border down the left side). */
+#pd-panel {
+  width: min(420px, 92vw);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, rgba(34, 28, 52, 0.34), rgba(20, 17, 32, 0.40));
+  backdrop-filter: blur(6px) saturate(115%);
+  border-left: 1px solid var(--pm-accent-b);
+  overflow: hidden;
+  animation: pm-slide 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes pm-slide {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+
+/* Header */
+#pd-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--pm-border);
+  background: linear-gradient(180deg, rgba(225,199,249,0.06), transparent);
+}
+#pd-badge {
+  width: 40px; height: 40px;
+  flex: none;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 10px;
+  color: var(--pm-accent);
+  background: var(--pm-tint);
+  border: 1px solid var(--pm-accent-b);
+}
+#pd-badge svg { width: 22px; height: 22px; }
+#pd-titles { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+#pd-title {
+  font-size: 15px; font-weight: 800; letter-spacing: 2px;
+  color: var(--pm-text); text-transform: uppercase;
+}
+#pd-title span { color: var(--pm-accent); }
+#pd-sub {
+  font-size: 12px; font-weight: 600; letter-spacing: 0.5px;
+  color: var(--pm-text-2);
+}
+#pd-close {
+  margin-left: auto;
+  width: 32px; height: 32px;
+  flex: none;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 8px;
+  color: var(--pm-text-2);
+  cursor: pointer;
+  transition: background 120ms, color 120ms;
+}
+#pd-close:hover { background: var(--pm-tint); color: var(--pm-accent); }
+#pd-close svg { width: 18px; height: 18px; }
+
+/* Search bar (shown for long lists, e.g. the vehicle bay) */
+#pd-search-wrap {
+  padding: 12px 20px 0;
+}
+#pd-search-wrap.hidden { display: none !important; }
+#pd-search {
+  width: 100%;
+  padding: 9px 12px;
+  font-family: var(--pm-font);
+  font-size: 13px;
+  color: var(--pm-text);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--pm-border);
+  border-radius: 9px;
+  outline: none;
+  transition: border-color 120ms, background 120ms;
+}
+#pd-search::placeholder { color: var(--pm-text-mut); }
+#pd-search:focus {
+  border-color: var(--pm-accent);
+  background: var(--pm-tint);
+}
+.pm-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: var(--pm-text-mut);
+  font-size: 13px;
+  padding: 24px 0;
+}
+
+/* Body grid */
+#pd-body {
+  padding: 14px 20px 8px;
+  overflow-y: auto;
+}
+#pd-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: 12px;
+}
+
+/* Card */
+.pm-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  transition: transform 120ms, background 120ms, border-color 120ms;
+}
+.pm-card:hover {
+  transform: translateY(-2px);
+  background: var(--pm-tint);
+  border-color: var(--pm-accent);
+}
+.pm-card:active { transform: translateY(0); }
+.pm-card.locked {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.pm-card.locked:hover {
+  transform: none;
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+.pm-ico {
+  width: 38px; height: 38px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 9px;
+  color: var(--pm-accent);
+  background: var(--pm-tint);
+}
+.pm-ico svg { width: 22px; height: 22px; }
+.pm-name {
+  font-size: 13.5px; font-weight: 700; color: var(--pm-text);
+  line-height: 1.25;
+}
+.pm-meta {
+  font-size: 11.5px; font-weight: 600; color: var(--pm-text-mut);
+}
+/* grade / status badge */
+.pm-badge {
+  position: absolute;
+  top: 10px; right: 10px;
+  font-size: 10px; font-weight: 800; letter-spacing: 0.5px;
+  padding: 3px 7px;
+  border-radius: 6px;
+  color: var(--pm-accent);
+  background: var(--pm-tint);
+  border: 1px solid var(--pm-accent-b);
+}
+.pm-badge.danger {
+  color: #ff8f8f;
+  background: rgba(255, 90, 90, 0.14);
+  border-color: rgba(255, 90, 90, 0.35);
+}
+
+/* Footer */
+#pd-foot {
+  padding: 12px 20px;
+  border-top: 1px solid var(--pm-border);
+  font-size: 11.5px; color: var(--pm-text-mut);
+  display: flex; align-items: center; gap: 8px;
+}
+#pd-foot b { color: var(--pm-accent); font-weight: 700; }
+
+/* Scrollbar */
+#pd-body::-webkit-scrollbar { width: 8px; }
+#pd-body::-webkit-scrollbar-thumb {
+  background: var(--pm-tint-2);
+  border-radius: 8px;
+}
+#pd-body::-webkit-scrollbar-track { background: transparent; }
+
+/* ============================================================
+   FLEET MANAGEMENT (chief) - manager list / vehicle picker / mod editor
+   ============================================================ */
+#pd-back {
+  width: 30px; height: 30px; flex: none;
+  display: none; align-items: center; justify-content: center;
+  margin-right: 4px; border-radius: 8px;
+  color: var(--pm-text-2); cursor: pointer;
+  transition: background 120ms, color 120ms;
+}
+#pd-back.show { display: flex; }
+#pd-back:hover { background: var(--pm-tint); color: var(--pm-accent); }
+#pd-back svg { width: 18px; height: 18px; }
+
+/* Primary action button (Add Vehicle, Save) */
+.pm-btn {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; min-height: 44px; padding: 0 16px;
+  font-family: var(--pm-font); font-size: 13px; font-weight: 700;
+  color: var(--pm-accent);
+  background: var(--pm-tint); border: 1px solid var(--pm-accent);
+  border-radius: 10px; cursor: pointer;
+  transition: background 120ms, transform 120ms;
+}
+.pm-btn:hover { background: var(--pm-tint-2); }
+.pm-btn:active { transform: translateY(1px); }
+.pm-btn svg { width: 17px; height: 17px; }
+.pm-btn.ghost { color: var(--pm-text-2); background: rgba(255,255,255,0.04); border-color: var(--pm-border); }
+.pm-btn.ghost:hover { color: var(--pm-accent); border-color: var(--pm-accent); background: var(--pm-tint); }
+
+/* Manager / picker list rows */
+.pm-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.pm-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 12px; border-radius: 10px;
+  background: rgba(255,255,255,0.04); border: 1px solid var(--pm-border);
+  transition: background 120ms, border-color 120ms;
+}
+.pm-row.click { cursor: pointer; }
+.pm-row.click:hover { background: var(--pm-tint); border-color: var(--pm-accent); }
+.pm-row .pm-ico { width: 32px; height: 32px; }
+.pm-row .pm-ico svg { width: 18px; height: 18px; }
+.pm-row-main { flex: 1; min-width: 0; }
+.pm-row-title { font-size: 13px; font-weight: 700; color: var(--pm-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pm-row-sub { font-size: 11px; color: var(--pm-text-mut); font-family: var(--mono, monospace); }
+.pm-row-acts { display: flex; gap: 6px; flex: none; }
+.pm-iconbtn {
+  width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
+  border-radius: 8px; cursor: pointer; color: var(--pm-text-2);
+  background: rgba(255,255,255,0.05); border: 1px solid var(--pm-border);
+  transition: background 120ms, color 120ms, border-color 120ms;
+}
+.pm-iconbtn svg { width: 15px; height: 15px; }
+.pm-iconbtn:hover { color: var(--pm-accent); border-color: var(--pm-accent); background: var(--pm-tint); }
+.pm-iconbtn.danger:hover { color: #ff8f8f; border-color: rgba(255,90,90,0.5); background: rgba(255,90,90,0.14); }
+
+/* Mod editor form */
+.pm-section { margin-top: 16px; }
+.pm-section:first-child { margin-top: 6px; }
+.pm-sec-title {
+  font-size: 11px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--pm-accent); margin-bottom: 8px; padding-left: 2px;
+}
+.pm-field {
+  display: flex; align-items: center; gap: 12px;
+  padding: 9px 0; border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.pm-field:last-child { border-bottom: 0; }
+.pm-field-label { font-size: 12.5px; color: var(--pm-text-2); flex: 1; min-width: 0; }
+.pm-field-ctl { flex: none; display: flex; align-items: center; gap: 10px; }
+
+/* range slider */
+.pm-range { -webkit-appearance: none; width: 130px; height: 4px; border-radius: 4px;
+  background: rgba(255,255,255,0.14); outline: none; }
+.pm-range::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 15px; height: 15px; border-radius: 50%;
+  background: var(--pm-accent); cursor: pointer; border: 2px solid rgba(20,18,30,0.8);
+}
+.pm-range-val { font-size: 12px; font-weight: 700; color: var(--pm-accent); min-width: 16px; text-align: right; font-family: var(--mono, monospace); }
+
+/* toggle switch */
+.pm-switch { position: relative; width: 40px; height: 22px; flex: none; }
+.pm-switch input { opacity: 0; width: 0; height: 0; }
+.pm-track {
+  position: absolute; inset: 0; border-radius: 22px; cursor: pointer;
+  background: rgba(255,255,255,0.12); border: 1px solid var(--pm-border);
+  transition: background 140ms, border-color 140ms;
+}
+.pm-track::before {
+  content: ''; position: absolute; left: 3px; top: 50%; transform: translateY(-50%);
+  width: 15px; height: 15px; border-radius: 50%; background: #fff; transition: transform 140ms;
+}
+.pm-switch input:checked + .pm-track { background: var(--pm-tint-2); border-color: var(--pm-accent); }
+.pm-switch input:checked + .pm-track::before { transform: translate(18px,-50%); background: var(--pm-accent); }
+
+/* color swatch (wraps a native color input) */
+.pm-color { position: relative; width: 38px; height: 24px; border-radius: 7px; overflow: hidden;
+  border: 1px solid var(--pm-border); cursor: pointer; }
+.pm-color input { position: absolute; inset: -4px; width: calc(100% + 8px); height: calc(100% + 8px);
+  border: 0; padding: 0; cursor: pointer; background: transparent; }
+
+/* select dropdown */
+.pm-select {
+  font-family: var(--pm-font); font-size: 12.5px; color: var(--pm-text);
+  background: rgba(255,255,255,0.06); border: 1px solid var(--pm-border);
+  border-radius: 8px; padding: 7px 10px; outline: none; cursor: pointer; min-width: 120px;
+}
+.pm-select:focus { border-color: var(--pm-accent); }
+.pm-select option { background: #181420; color: #fff; }
+
+/* number input */
+.pm-num {
+  width: 64px; font-family: var(--pm-font); font-size: 12.5px; color: var(--pm-text);
+  background: rgba(255,255,255,0.06); border: 1px solid var(--pm-border);
+  border-radius: 8px; padding: 7px 9px; outline: none; text-align: center;
+}
+.pm-num:focus { border-color: var(--pm-accent); }

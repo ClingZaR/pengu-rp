@@ -1,0 +1,130 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    --accent: #E1C7F9;
+}
+
+html, body {
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    overflow: hidden;
+    font-family: Arial, sans-serif;
+    color: #fff;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.hidden {
+    display: none !important;
+}
+
+#radar {
+    position: fixed;
+    right: 18px;
+    bottom: 128px;
+    width: 212px;
+    padding: 10px 12px 8px;
+    background: rgba(16, 16, 24, 0.72); /* matches the pengu_hud speedometer .glass */
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 14px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+    color: #fff;
+}
+
+.radar-header {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-bottom: 8px;
+}
+
+.radar-cam {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    color: var(--accent);
+}
+
+.radar-title {
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.radar-rows {
+    display: flex;
+    flex-direction: column;
+}
+
+.radar-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5px 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    border-left: 2px solid transparent;
+}
+
+.radar-item:last-child {
+    border-bottom: none;
+}
+
+.radar-item.selected {
+    background: rgba(225, 199, 249, 0.14);
+    border-left: 2px solid var(--accent);
+}
+
+.radar-item.selected .radar-plate {
+    color: var(--accent);
+}
+
+.radar-plate {
+    font-family: monospace;
+    font-size: 0.86rem;
+    font-weight: 700;
+    color: #fff;
+}
+
+.radar-speed {
+    display: flex;
+    align-items: baseline;
+    gap: 3px;
+}
+
+.radar-speed-num {
+    font-size: 0.86rem;
+    font-weight: 700;
+    color: #fff;
+}
+
+.radar-speed-num.over {
+    color: #ff7a7a;
+}
+
+.radar-speed-unit {
+    font-size: 0.56rem;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.radar-empty {
+    padding: 6px;
+    font-size: 0.7rem;
+    color: rgba(255, 255, 255, 0.4);
+    text-align: center;
+}
+
+.radar-footer {
+    margin-top: 8px;
+    padding-top: 7px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    font-size: 0.56rem;
+    color: rgba(255, 255, 255, 0.4);
+    text-align: center;
+}

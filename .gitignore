@@ -1,0 +1,21 @@
+# FiveM / txAdmin artifacts
+cache/
+logs/
+*.log
+*.pid
+*.lock
+server-data/
+txData/
+resources/**/node_modules/
+resources/**/*.zip
+
+# Secrets (never commit these)
+.env
+*.secret
+
+# macOS / Windows junk
+.DS_Store
+Thumbs.db
+
+# weapon icon backup created by the reskin script
+overrides/[ox]/ox_inventory/web/images/weapon_icons_backup_*/

@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  /* fonts are BUNDLED in the resource (ui/fonts) so they load instantly from the server - no internet
+     dependency and no flash-of-fallback-font. font-display:block keeps text invisible (not fallback)
+     until the real face is ready; the JS below also gates reveal on document.fonts. */
+  @font-face {
+    font-family: 'RubikSprayPaint';
+    src: url('fonts/RubikSprayPaint-Regular.ttf') format('truetype');
+    font-display: block;
+  }
+  @font-face {
+    font-family: 'PermanentMarker';
+    src: url('fonts/PermanentMarker-Regular.ttf') format('truetype');
+    font-display: block;
+  }
+  @font-face {
+    font-family: 'Bangers';
+    src: url('fonts/Bangers-Regular.ttf') format('truetype');
+    font-display: block;
+  }
+
+  html, body {
+    margin: 0;
+    width: 1024px;
+    height: 512px;
+    background: transparent;     /* only the paint shows */
+    overflow: hidden;
+  }
+  #wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    padding: 18px;
+  }
+  #tag {
+    text-align: center;
+    line-height: 0.95;
+    word-break: break-word;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    font-family: 'RubikSprayPaint', 'PermanentMarker', 'Bangers', 'Impact', sans-serif;
+    color: #ffffff;
+    font-size: 280px;
+    transform: skewX(-6deg);
+    /* spray look: chunky dark outline + soft drop shadow so it reads on any wall */
+    text-shadow:
+      -2px -2px 0 #0a0a0a, 2px -2px 0 #0a0a0a, -2px 2px 0 #0a0a0a, 2px 2px 0 #0a0a0a,
+      0 0 14px rgba(0,0,0,.5), 6px 10px 14px rgba(0,0,0,.55);
+  }
+</style>
+</head>
+<body>
+  <div id="wrap"><div id="tag"></div></div>
+  <script>
+    var box = document.getElementById('wrap');
+    var tag = document.getElementById('tag');
+    var data = { text: '', color: '#ffffff', rot: 0 };
+
+    // shrink the font until the text fits the 1024x512 texture (long names don't clip)
+    function fit() {
+      var size = 300;
+      tag.style.fontSize = size + 'px';
+      while (size > 24 && (tag.scrollWidth > box.clientWidth - 28 || tag.scrollHeight > box.clientHeight - 28)) {
+        size -= 8;
+        tag.style.fontSize = size + 'px';
+      }
+    }
+
+    function render() {
+      tag.textContent = data.text || '';
+      tag.style.color = data.color || '#ffffff';
+      tag.style.transform = 'rotate(' + (data.rot || 0) + 'deg) skewX(-6deg)'; // slight per-tag lean
+      fit();
+    }
+
+    var revealed = false;
+    function reveal() {
+      if (revealed) return;
+      revealed = true;
+      tag.style.visibility = 'visible';
+      render();
+    }
+
+    window.addEventListener('message', function (e) {
+      var d = e.data || {};
+      if (d.type === 'set') { data = d; render(); }
+    });
+
+    // start hidden; reveal only once the spray font is ready (or a short fallback) -> never shows the
+    // wrong font first, so there is no "loads wrong then fixes itself" flash.
+    tag.style.visibility = 'hidden';
+    if (document.fonts && document.fonts.load) {
+      Promise.race([
+        Promise.all([
+          document.fonts.load('1em "RubikSprayPaint"'),
+          document.fonts.load('1em "PermanentMarker"')
+        ]),
+        new Promise(function (r) { setTimeout(r, 1200); })
+      ]).then(reveal);
+    } else {
+      setTimeout(reveal, 400);
+    }
+  </script>
+</body>
+</html>

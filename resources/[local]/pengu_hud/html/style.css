@@ -1,0 +1,397 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --accent: #E1C7F9;
+  --green:  #7CFFA0;
+  --font:   Arial, 'Helvetica Neue', sans-serif;
+  --outline:
+    -1px -1px 0 #000, 0 -1px 0 #000, 1px -1px 0 #000,
+    -1px  0   0 #000,                1px  0   0 #000,
+    -1px  1px 0 #000, 0  1px 0 #000, 1px  1px 0 #000;
+  --drop: drop-shadow(0 0 1px #000) drop-shadow(0 1px 1px rgba(0,0,0,0.85));
+  --soft: 0 1px 3px rgba(0,0,0,0.6);
+}
+
+html, body {
+  width: 100vw; height: 100vh;
+  overflow: hidden;
+  background: transparent;
+  font-family: var(--font);
+  color: #fff;
+  user-select: none;
+}
+
+.hidden { display: none !important; }
+.hud    { position: fixed; }
+
+/* translucent dark card (no backdrop-filter - it renders a fullscreen black box in FiveM NUI) */
+.glass {
+  background: rgba(16, 16, 24, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 14px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+}
+
+/* -- SPEEDOMETER (bottom-right) -- */
+#speedometer {
+  bottom: 18px;
+  right: 18px;
+  width: 212px; /* fixed so 1/2/3-digit speeds do not resize it; matches the radar HUD above */
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.spd-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.spd-readout {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+#speed-num {
+  font-size: 2.7rem;
+  font-weight: 800;
+  letter-spacing: -2px;
+  line-height: 1;
+  text-shadow: var(--soft);
+}
+#speed-unit {
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: rgba(255, 255, 255, 0.5);
+}
+.spd-side {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+#gear-label {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #fff;
+  min-width: 16px;
+  text-align: center;
+  text-shadow: var(--soft);
+}
+#belt-icon {
+  width: 22px; height: 22px;
+  filter: var(--drop);
+}
+#belt-icon.on  { fill: var(--green); }
+#belt-icon.off { fill: #ff5a5a; animation: blink 1s step-end infinite; }
+@keyframes blink { 50% { opacity: 0.25; } }
+
+#engine-icon {
+  width: 22px;
+  height: 22px;
+  filter: var(--drop);
+}
+#engine-icon.warn { fill: #facc15; }
+#engine-icon.crit { fill: #ff4d4d; animation: blink 0.9s step-end infinite; }
+
+.spd-fuel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+#fuel-icon {
+  width: 15px; height: 15px;
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.6);
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex-shrink: 0;
+}
+.fuel-bar {
+  flex: 1;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+}
+#fuel-fill {
+  height: 100%;
+  width: 100%;
+  border-radius: 3px;
+  background: var(--green);
+  transition: width 0.3s ease, background 0.3s ease;
+}
+
+/* -- STATUS BARS (bottom-left, below the raised minimap) -- */
+#status-row {
+  bottom: 1vh;
+  left: 155px;
+  height: 54px;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 0 16px;
+}
+
+/* -- VOICE METER (left of the status bars, same height) -- */
+#voice {
+  bottom: 1vh;
+  left: 16px;
+  height: 54px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 14px;
+}
+#voice-mic {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.55);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: stroke 0.2s ease;
+}
+#voice.talking #voice-mic { stroke: var(--accent); }
+#voice-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 16px;
+}
+.vb {
+  width: 4px;
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.18);
+  transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+.vb[data-lvl="1"] { height: 6px; }
+.vb[data-lvl="2"] { height: 11px; }
+.vb[data-lvl="3"] { height: 16px; }
+.vb.on { background: rgba(255, 255, 255, 0.5); }
+.vb.talking { background: var(--accent); box-shadow: 0 0 6px rgba(225, 199, 249, 0.7); }
+#voice-label {
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.6);
+  min-width: 46px;
+  text-shadow: var(--soft);
+  transition: color 0.2s ease;
+}
+#voice.talking #voice-label { color: var(--accent); }
+.si {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  width: 30px;
+}
+.si-icon {
+  width: 21px;
+  height: 21px;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: stroke 0.4s ease;
+}
+.si-bar {
+  width: 30px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.si-fill {
+  height: 100%;
+  width: 100%;
+  border-radius: 2px;
+  transition: width 0.45s ease, background 0.4s ease;
+}
+
+/* /aduty admin-duty indicator — leftmost in the status row, icon only */
+.si-aduty {
+  width: auto;
+  height: 32px;                 /* matches a full stat block (icon + bar) */
+  justify-content: center;      /* center the enlarged icon to fill that height */
+  padding-right: 14px;
+  margin-right: 2px;
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
+}
+.si-aduty .si-icon {
+  width: 30px;                  /* enlarged to fill the space where a bar would be */
+  height: 30px;
+  stroke: #ff4d4d;              /* red admin-duty shield */
+  animation: aduty-pulse 2.2s ease-in-out infinite;
+}
+@keyframes aduty-pulse {
+  0%, 100% { opacity: 1;    filter: drop-shadow(0 0 5px rgba(255, 60, 60, 0.55)); }
+  50%      { opacity: 0.82; filter: drop-shadow(0 0 12px rgba(255, 60, 60, 1)); }
+}
+
+/* -- SETTINGS MODAL -- */
+#settings-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.62);
+  z-index: 9999;
+}
+#settings-panel {
+  background: rgba(10, 10, 16, 0.96);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 12px;
+  width: 340px;
+  overflow: hidden;
+}
+#sett-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 18px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(255,255,255,0.9);
+}
+#sett-dot {
+  display: inline-block;
+  width: 7px; height: 7px;
+  background: var(--accent);
+  border-radius: 50%;
+  margin-right: 6px;
+  box-shadow: 0 0 8px var(--accent);
+}
+#sett-close { cursor: pointer; color: rgba(255,255,255,0.35); transition: color 0.15s; }
+#sett-close:hover { color: #fff; }
+#sett-body { padding: 16px 18px; display: flex; flex-direction: column; gap: 16px; }
+.sett-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.8rem;
+  color: rgba(255,255,255,0.72);
+}
+.sett-btns { display: flex; gap: 4px; }
+.sett-btns button {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.45);
+  border-radius: 5px;
+  padding: 4px 13px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: var(--font);
+  transition: all 0.15s;
+}
+.sett-btns button.active {
+  background: rgba(225,199,249,0.13);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.tog { position: relative; display: inline-block; width: 38px; height: 20px; cursor: pointer; }
+.tog input { display: none; }
+.tog-track {
+  position: absolute; inset: 0;
+  background: rgba(255,255,255,0.09);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 20px;
+  transition: 0.2s;
+}
+.tog-thumb {
+  position: absolute;
+  width: 14px; height: 14px;
+  top: 2px; left: 2px;
+  background: rgba(255,255,255,0.4);
+  border-radius: 50%;
+  transition: 0.2s;
+}
+.tog input:checked ~ .tog-track { background: rgba(225,199,249,0.2); border-color: var(--accent); }
+.tog input:checked ~ .tog-track .tog-thumb { transform: translateX(18px); background: var(--accent); }
+#sett-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid rgba(255,255,255,0.07);
+}
+#sett-footer button {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.55);
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: var(--font);
+  transition: all 0.15s;
+}
+#sett-footer button:hover { border-color: rgba(255,255,255,0.25); color: #fff; }
+#sett-footer .btn-primary {
+  background: rgba(225,199,249,0.13);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+#sett-footer .btn-primary:hover { background: rgba(225,199,249,0.22); }
+
+/* ---------- drug effect icon chips (above the status bars, bottom-left) ---------- */
+#effects-row {
+  position: fixed;
+  left: 16px;
+  bottom: 210px;
+  display: flex;
+  gap: 8px;
+  z-index: 30;
+}
+#effects-row.hidden { display: none; }
+.fx-chip {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  border-radius: 11px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(16, 16, 24, 0.72);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(225, 199, 249, 0.18);
+}
+/* depleting countdown ring driven by --deg */
+.fx-chip::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 13px;
+  padding: 2px;
+  background: conic-gradient(var(--accent, #E1C7F9) var(--deg, 0deg), rgba(255, 255, 255, 0.08) 0);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  pointer-events: none;
+}
+.fx-ic {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: var(--accent, #E1C7F9);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.fx-secs {
+  font-size: 9px;
+  line-height: 1;
+  margin-top: 2px;
+  color: #cdb9e6;
+  font-variant-numeric: tabular-nums;
+}
