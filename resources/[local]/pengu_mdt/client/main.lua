@@ -3,8 +3,10 @@
     Standalone Qbox MDT. Stack: qbx_core + ox_lib + screenshot-basic.
 
     Responsibilities:
-      - /mdt command + F11 keybind -> open the NUI, but ONLY for LEO
-        (PlayerData.job.type == 'leo' covers police/bcso/sasp).
+      - /mdt command + F11 keybind -> open the NUI for LEO
+        (PlayerData.job.type == 'leo' covers police/bcso/sasp) AND for court
+        (job.name 'judge'/'lawyer' -> restricted read-only role; the server
+        re-checks the role on every callback).
       - Relay every NUI data fetch to the authoritative server callbacks
         via lib.callback.await('pengu_mdt:<name>', ...).
       - Booking camera: the pdloc 'mugshot' point calls exports startBookingMugshot
@@ -13,7 +15,10 @@
         the small image to the server to store against the named citizen.
       - Cameras: scripted-cam presets (coords live both here + server CAMERAS);
         viewCamera renders a fixed CCTV angle, exitCamera restores the player view.
-      - Bodycam: a simple client on/off stub.
+      - Bodycam: REAL captures via screenshot-basic (it IS installed; the
+        booking camera below already uses it). REC ON grabs a frame immediately
+        and then every 60s; each frame is downscaled in our own NUI and stored
+        server-side (pengu_mdt_bodycam, pruned to 20 per officer).
       - closeMdt is handled entirely client-side (release NUI focus + restore cam).
 
     NUI <-> client contract (fetch https://pengu_mdt/<name>):
@@ -31,11 +36,12 @@
         getReport     {id}               -> pengu_mdt:getReport
         createReport  {title,...}         -> pengu_mdt:createReport
         getCameras    {}                 -> pengu_mdt:getCameras
+        getBodycam    {}                 -> pengu_mdt:getBodycam
       Client-only (no server hop):
         closeMdt      {}                 -> SetNuiFocus(false) + restore cam
         viewCamera    {id}               -> scripted CCTV cam at the feed
         exitCamera    {}                 -> destroy cam + restore player view
-        toggleBodycam {}                 -> flip a REC indicator flag (stub)
+        toggleBodycam {}                 -> start/stop the real bodycam capture loop
 
     Outbound (client -> NUI) messages:
       {action='open'} {action='close'}
@@ -278,10 +284,21 @@ end
 -- Auth helper
 ----------------------------------------------------------------------
 
--- True only when the local player is an ON-DUTY LEO (off-duty officers cannot open the MDT).
-local function isLeo()
+-- MDT role for the local player:
+--   'leo'   = ON-DUTY LEO (off-duty officers cannot open the MDT)
+--   'court' = judge/lawyer -> restricted read-only role (server re-checks)
+--   nil     = no access
+local function mdtRole()
     local data = exports.qbx_core:GetPlayerData()
-    return data ~= nil and data.job ~= nil and data.job.type == 'leo' and data.job.onduty == true
+    if data == nil or data.job == nil then return nil end
+    if data.job.type == 'leo' and data.job.onduty == true then return 'leo' end
+    if data.job.name == 'judge' or data.job.name == 'lawyer' then return 'court' end
+    return nil
+end
+
+-- True only when the local player is an ON-DUTY LEO (radar, booking cam, bodycam).
+local function isLeo()
+    return mdtRole() == 'leo'
 end
 
 ----------------------------------------------------------------------
@@ -290,7 +307,8 @@ end
 
 local function openMdt()
     if isOpen then return end
-    if not isLeo() then
+    local role = mdtRole()
+    if not role then
         -- PenguRP: feedback in chat, not a toast.
         TriggerEvent('chat:addMessage', {
             templateId = 'pengu:admin',
@@ -301,7 +319,10 @@ local function openMdt()
 
     isOpen = true
     SetNuiFocus(true, true)
-    SendNUIMessage({ action = 'open' })
+    -- role drives the NUI: 'court' hides the Arrest Calculator, BOLO create
+    -- form and every action button. The server enforces the same role on
+    -- every callback, so this is presentation only.
+    SendNUIMessage({ action = 'open', role = role })
 end
 
 local function closeMdt()
@@ -322,7 +343,7 @@ AddEventHandler('pengu_mdt:runPlate', function(plate)
         isOpen = true
         SetNuiFocus(true, true)
     end
-    SendNUIMessage({ action = 'open', plate = plate })
+    SendNUIMessage({ action = 'open', plate = plate, role = 'leo' }) -- isLeo() checked above
 end)
 
 ----------------------------------------------------------------------
@@ -381,10 +402,20 @@ RegisterCommand('plea', function()
 end, false)
 TriggerEvent('chat:addSuggestion', '/plea', 'Enter your plea for your current charges')
 
+-- Wanted level commands are server-side (on-duty LEO only); suggestions here.
+TriggerEvent('chat:addSuggestion', '/wanted', 'Flag a citizen as wanted (LEO)', {
+    { name = 'id', help = 'Player server id' },
+    { name = 'level', help = 'Wanted level 1-5' },
+    { name = 'reason', help = 'Reason (optional)' },
+})
+TriggerEvent('chat:addSuggestion', '/unwanted', 'Clear a citizen wanted status (LEO)', {
+    { name = 'id', help = 'Player server id' },
+})
+
 ----------------------------------------------------------------------
 -- NUI callbacks - data relays to the authoritative server callbacks.
 -- Identical pattern for every one: forward the NUI payload verbatim and
--- return whatever the LEO-gated server callback responds with.
+-- return whatever the role-gated (LEO / court) server callback responds with.
 ----------------------------------------------------------------------
 
 local RELAY_CALLBACKS = {
@@ -394,7 +425,8 @@ local RELAY_CALLBACKS = {
     'getBolos', 'createBolo', 'cancelBolo',
     'getWarrants',
     'getReports', 'getReport', 'createReport',
-    'getCameras',
+    'getCameras', 'getBodycam',
+    'setWanted',
 }
 
 for _, name in ipairs(RELAY_CALLBACKS) do
@@ -458,12 +490,70 @@ RegisterNUICallback('exitCamera', function(_, cb)
     cb({ ok = true })
 end)
 
--- toggleBodycam {} - simple on/off REC-indicator stub; the NUI shows a corner
--- REC indicator based on the returned flag.
+----------------------------------------------------------------------
+-- Bodycam - REAL captures. REC ON grabs a frame immediately and then every
+-- 60s while ON (stops on toggle OFF, resource stop or player unload). Each
+-- frame mirrors the mugshot upload flow: screenshot-basic raw capture -> our
+-- own NUI downscales it (downscaleBodycam / bodycamProcessed) -> the small
+-- data URI goes to the server (pengu_mdt:storeBodycamCapture) which archives
+-- it in pengu_mdt_bodycam (pruned to the newest 20 rows per officer).
+----------------------------------------------------------------------
+
 local bodycamOn = false
+local bodycamToken = 0 -- bumped on every start/stop so a stale loop dies
+local BODYCAM_INTERVAL_MS = 60000
+
+local function snapBodycamFrame()
+    exports['screenshot-basic']:requestScreenshot({ encoding = 'jpg', quality = 0.6 }, function(dataUri)
+        -- re-check: the cam may have been toggled off while the shot was taken
+        if bodycamOn and type(dataUri) == 'string' and dataUri:find('data:image', 1, true) then
+            SendNUIMessage({ action = 'downscaleBodycam', src = dataUri })
+        end
+    end)
+end
+
+local function stopBodycam()
+    if not bodycamOn then return end
+    bodycamOn = false
+    bodycamToken = bodycamToken + 1
+    SendNUIMessage({ action = 'bodycamState', on = false }) -- keep the REC HUD in sync
+end
+
+local function startBodycam()
+    if bodycamOn then return end
+    bodycamOn = true
+    bodycamToken = bodycamToken + 1
+    local myToken = bodycamToken
+    CreateThread(function()
+        while bodycamOn and bodycamToken == myToken do
+            snapBodycamFrame()
+            Wait(BODYCAM_INTERVAL_MS)
+        end
+    end)
+end
+
 RegisterNUICallback('toggleBodycam', function(_, cb)
-    bodycamOn = not bodycamOn
+    if not isLeo() then -- court users can view the archive but never record
+        stopBodycam()
+        cb({ on = false })
+        return
+    end
+    if bodycamOn then stopBodycam() else startBodycam() end
     cb({ on = bodycamOn })
+end)
+
+-- The NUI returns the downscaled bodycam frame; ship it to the server archive.
+RegisterNUICallback('bodycamProcessed', function(data, cb)
+    cb('ok')
+    if bodycamOn and type(data) == 'table'
+       and type(data.src) == 'string' and data.src ~= '' then
+        TriggerServerEvent('pengu_mdt:storeBodycamCapture', data.src)
+    end
+end)
+
+-- Bodycam must not survive a character unload (job may change on next login).
+RegisterNetEvent('QBCore:Client:OnPlayerUnload', function()
+    stopBodycam()
 end)
 
 ----------------------------------------------------------------------
@@ -569,6 +659,7 @@ AddEventHandler('onResourceStop', function(resource)
     if resource ~= cache.resource then return end
     exitCamera()
     bookingCleanup() -- restore view if the resource stops mid-booking
+    stopBodycam()    -- kill the capture loop with the resource
     if isOpen then
         isOpen = false
         SetNuiFocus(false, false)

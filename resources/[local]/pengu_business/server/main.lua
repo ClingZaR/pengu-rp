@@ -158,6 +158,13 @@ lib.callback.register('pengu_business:buy', function(src, bizId)
 
         local p = qbx:GetPlayer(src)
         if not p then return end
+
+        -- must hold a Business License item from City Hall (checked, never consumed)
+        local licCount = exports.ox_inventory:Search(src, 'count', 'business_license') or 0
+        if licCount < 1 then
+            notify(src, 'You need a Business License from City Hall.', 'error'); return
+        end
+
         local bankBal = (p.Functions.GetMoney and p.Functions.GetMoney('bank')) or 0
         if bankBal < b.price then notify(src, ('You need $%d in the bank.'):format(b.price), 'error'); return end
 

@@ -11,6 +11,7 @@ Config.categories = {
     hunting    = { label = 'Hunting',    icon = 'fa-solid fa-crosshairs',  thresholds = {0, 400,  1200, 3000, 6500} },
     cooking    = { label = 'Cooking',    icon = 'fa-solid fa-utensils',    thresholds = {0, 300,  1000, 2500, 5500} },
     lumberjack = { label = 'Lumberjack', icon = 'fa-solid fa-tree',       thresholds = {0, 300,  1000, 2500, 5500} },
+    delivery   = { label = 'Delivery',   icon = 'fa-solid fa-truck-fast',  thresholds = {0, 300,  1000, 2500, 5500} },
     fitness    = { label = 'Fitness',    icon = 'fa-solid fa-dumbbell',    thresholds = {0, 300,  1000, 2500, 5500} },
 }
 
@@ -42,6 +43,9 @@ Config.sellXP = {
     lumberyard     = { category = 'lumberjack', amount = 8  },
     smelter        = { category = 'mining',     amount = 12 },
 }
+
+-- Delivery courier (pengu_jobs depot routes): XP per delivered stop
+Config.deliveryXP = { category = 'delivery', amount = 20 }
 
 -- Daily playtime bonus (gang member, >=1h per day, first time each day)
 Config.playtime = {

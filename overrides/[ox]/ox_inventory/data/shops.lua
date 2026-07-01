@@ -7,6 +7,12 @@ return {
 			{ name = 'burger', price = 10 },
 			{ name = 'water', price = 10 },
 			{ name = 'cola', price = 10 },
+			-- PenguRP: expanded general-store stock (all items verified to exist in data/items.lua)
+			{ name = 'sandwich', price = 8 },
+			{ name = 'coffee', price = 6 },
+			{ name = 'water_bottle', price = 8 },
+			{ name = 'phone', price = 350 },
+			{ name = 'radio', price = 250 },
 		}, locations = {
 			vec3(25.7, -1347.3, 29.49),
 			vec3(-3038.71, 585.9, 7.9),
@@ -178,5 +184,39 @@ return {
 		model = {
 			`prop_vend_soda_02`, `prop_vend_fridge01`, `prop_vend_water_01`, `prop_vend_soda_01`
 		}
+	},
+
+	-- PenguRP: pet shop stock for keep-companion-ox (resources/[standalone]/keep-companion-ox).
+	-- PenguRP: NOT placed in the world yet - locations is intentionally empty; owner adds coords.
+	-- PenguRP: upstream README suggests vec3(563.64, 2753.1, 41.88) (Harmony, Sandy Shores) as a
+	-- PenguRP: shop spot; add it (or any coords) to `locations` below to go live.
+	-- PenguRP: keepcompanionk9unit is deliberately NOT sold here - README says LSPD-only; owner
+	-- PenguRP: should add it to a police-restricted shop/locker instead.
+	PetShop = {
+		name = 'Pet Shop',
+		blip = {
+			id = 463, colour = 31, scale = 1.1
+		}, inventory = {
+			{ name = 'petfood', price = 500 },
+			{ name = 'collarpet', price = 2000 },
+			{ name = 'firstaidforpet', price = 2000 },
+			{ name = 'petnametag', price = 2000 },
+			{ name = 'petwaterbottleportable', price = 500 },
+			{ name = 'petgroomingkit', price = 7500 },
+			{ name = 'keepcompanionhusky', price = 75000, count = 5 },
+			{ name = 'keepcompanionpoodle', price = 45000, count = 5 },
+			{ name = 'keepcompanionrottweiler', price = 75000, count = 5 },
+			{ name = 'keepcompanionwesty', price = 30000, count = 5 },
+			{ name = 'keepcompanioncat', price = 25000, count = 10 },
+			{ name = 'keepcompanionpug', price = 50000, count = 5 },
+			{ name = 'keepcompanionretriever', price = 50000, count = 5 },
+			{ name = 'keepcompanionshepherd', price = 50000, count = 5 },
+			{ name = 'keepcompanionhen', price = 25000, count = 10 },
+			{ name = 'keepcompanionrat', price = 25000, count = 10 },
+			{ name = 'keepcompanionrabbit', price = 25000, count = 20 },
+		}, locations = {
+			-- vec3(563.64, 2753.1, 41.88), -- PenguRP: suggested spot (owner uncomments to place)
+		}
 	}
+	-- PenguRP: end keep-companion-ox pet shop
 }

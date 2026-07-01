@@ -190,3 +190,21 @@ exports('JailPlayerById', function(targetSource, minutes)
     lib.callback.await('xt-prison:client:enterJail', targetSource, minutes)
     return true
 end)
+
+-- PenguRP: external release API for the pengu_gov mayor pardon. Mirrors the /xtunjail
+-- handler above minus the cop gating (the caller has already authorised the release).
+-- Returns true only if the target was actually serving time and got released. Registered
+-- outside the EnableJailCommand block, same precedent as JailPlayerById.
+exports('UnjailPlayerById', function(targetSource)
+    targetSource = tonumber(targetSource)
+    if not targetSource then return false end
+
+    local targetPlayer = getPlayer(targetSource)
+    if not targetPlayer then return false end
+
+    local state = Player(targetSource).state
+    if not state or not state.jailTime or state.jailTime <= 0 then return false end
+
+    local released = lib.callback.await('xt-prison:client:exitJail', targetSource, true)
+    return released and true or false
+end)

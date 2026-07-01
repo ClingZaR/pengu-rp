@@ -1,5 +1,6 @@
 -- PenguRP Marriage System (pengu_core) - CLIENT. /propose, /divorce, /marriagestatus commands.
 -- Receives proposal-received net event, shows an accept/reject dialog, sends response back.
+-- Also surfaces the joint bank account (Renewed-Banking) opened on marriage.
 -- ASCII only. luac clean.
 
 local function notify(msg, kind)
@@ -26,6 +27,14 @@ RegisterCommand('marriagestatus', function()
     if not s then return end
     if s.marriedTo and s.marriedTo ~= '' then
         notify(('Married to %s'):format(s.marriedName or s.marriedTo), 'success')
+        -- PenguRP: joint bank account info
+        if s.account and s.account ~= '' then
+            local line = ('Joint bank account: %s'):format(s.account)
+            if s.accountBalance then
+                line = line .. (' (balance: $%s)'):format(s.accountBalance)
+            end
+            notify(line, 'inform')
+        end
     else
         notify('You are not married.', 'inform')
     end
@@ -64,6 +73,15 @@ RegisterNetEvent('pengu_core:proposalResult', function(accepted, partnerName)
     end
 end)
 
-RegisterNetEvent('pengu_core:divorced', function(exName)
+RegisterNetEvent('pengu_core:divorced', function(exName, acctNote)
     notify(('%s has divorced you.'):format(exName or 'Your spouse'), 'error')
+    -- PenguRP: joint account notice (e.g. funds remain at the bank to be split)
+    if acctNote and acctNote ~= '' then
+        notify(acctNote, 'inform')
+    end
+end)
+
+-- PenguRP: joint bank account opened on marriage
+RegisterNetEvent('pengu_core:jointAccount', function(acctId)
+    notify(('A joint bank account has been opened for you both: %s'):format(acctId), 'success')
 end)

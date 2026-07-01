@@ -333,6 +333,43 @@ html, body{
 
 .duty-dot{ width:8px; height:8px; border-radius:50%; background:var(--green); box-shadow:0 0 7px rgba(124,255,160,.6); flex:0 0 auto; }
 
+/* ---------- Wanted level (0-5 stars; SVG only, no unicode) ---------- */
+.wanted-bar{
+  display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+  padding:11px 16px; border-top:1px solid var(--hairline);
+}
+.wanted-left{ display:flex; align-items:center; gap:10px; }
+.wanted-label{ font-size:10.5px; letter-spacing:1px; text-transform:uppercase; color:var(--text-muted); }
+.wanted-stars{ display:inline-flex; align-items:center; gap:3px; }
+.wanted-star{ fill:none; stroke:rgba(255,255,255,.35); stroke-width:1.6; flex:0 0 auto; }
+.wanted-star.on{ fill:var(--warning); stroke:var(--warning); }
+.wanted-bar.is-high .wanted-star.on{ fill:var(--danger); stroke:var(--danger); }
+.wanted-text{ font-size:11.5px; font-weight:800; letter-spacing:.8px; color:var(--text-muted); }
+.wanted-text.warn{ color:var(--warning); }
+.wanted-text.danger{ color:var(--danger); }
+.wanted-reason{
+  flex:1 1 120px; min-width:0; font-size:12px; color:var(--text-2);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.wanted-set{ display:flex; align-items:center; gap:8px; margin-left:auto; }
+.wanted-set select,
+.wanted-set input{
+  background:rgba(255,255,255,.04); border:1px solid var(--btn-border);
+  border-radius:9px; color:var(--text);
+  font-family:var(--font); font-size:12px; padding:6px 9px; outline:none; transition:.15s;
+}
+.wanted-set select:focus,
+.wanted-set input:focus{ border-color:var(--accent); }
+.wanted-set option{ background:#16161c; color:#fff; }
+.wanted-set input{ width:150px; }
+.wanted-set input::placeholder{ color:var(--text-muted); }
+
+/* warrant-row wanted pill: mini stars + n/5 */
+.pill.wanted-pill{ gap:4px; }
+.pill.wanted-pill .wanted-star{ stroke:rgba(255,255,255,.3); stroke-width:1.8; }
+.pill.wanted-pill.warn .wanted-star.on{ fill:var(--warning); stroke:var(--warning); }
+.pill.wanted-pill.danger .wanted-star.on{ fill:var(--danger); stroke:var(--danger); }
+
 /* ============================================================
    DASHBOARD / WARRANTS / list rows
    ============================================================ */
@@ -620,6 +657,23 @@ html, body{
   font-size:11px; color:var(--text-muted); font-family:var(--mono);
   white-space:nowrap;
 }
+
+/* ============================================================
+   BODYCAM ARCHIVE (Cameras tab)
+   ============================================================ */
+.bodycam-archive{ margin-top:16px; }
+.bodycam-list{ padding:12px; max-height:420px; overflow-y:auto; }
+.bodycam-thumb{ overflow:hidden; padding:0; }
+.bodycam-thumb-img{ width:100%; height:100%; object-fit:cover; display:block; }
+
+/* ============================================================
+   COURT ROLE (judge/lawyer) - restricted read-only MDT.
+   Everything marked .leo-only disappears: Units + Arrest rail tabs,
+   BOLO create form + actions, live CCTV feeds, bodycam REC toggle,
+   Charge-in-Calculator. View Record (warrants) stays. The server
+   enforces the same restrictions on every callback.
+   ============================================================ */
+#app.role-court .leo-only{ display:none !important; }
 
 /* ============================================================
    BODYCAM REC indicator (persists outside the panel)

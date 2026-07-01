@@ -2,19 +2,28 @@
    pengu_mdt - NUI logic (REDESIGN2)
    Talks to the client relay via fetch(https://pengu_mdt/<cb>).
 
-   Server callbacks (LEO-gated, by NAME only - NO citizen IDs):
+   Server callbacks (role-gated server-side, by NAME only - NO citizen IDs):
      getDashboard {}                         -> { units:[{callsign, members:[name], unassigned?}] }
-     searchPerson {name}                     -> { found,name,mugshot,phone,totals,outstanding[],history[],prints }
+     searchPerson {name}                     -> { found,name,mugshot,phone,totals,outstanding[],history[],prints,wanted:{level,reason} }
      searchVehicle {plate}                   -> { found,owner,model,plate,vin,phone }
      getPenalCode {}                         -> { charges, modifiers }
      placeCharges {name,items[{code,modifiers[]}]} -> { success, message }
+     setWanted {name,level,reason}           -> { success, message, wanted:{level,reason} }  (LEO only)
      getBolos {}                             -> { items[] }
      createBolo {type,title,description,images[]} / cancelBolo {id}
-     getWarrants {}                          -> { items:[{name,charges,months,fine}] }
+     getWarrants {}                          -> { items:[{name,charges,months,fine,wanted}] }
      getCameras {}                           -> { feeds:[{id,label}] }
+     getBodycam {}                           -> { items:[{id,officer,captured_at,image}] }
    Client-only callbacks:
-     closeMdt, viewCamera {id}, exitCamera {}, toggleBodycam {} -> {on}
-   Messages: {action:'open'} {action:'close'}
+     closeMdt, viewCamera {id}, exitCamera {},
+     toggleBodycam {} -> {on}  (real captures: the client snaps a frame via
+     screenshot-basic on toggle + every 60s, we downscale it here and hand it
+     back via bodycamProcessed)
+   Messages: {action:'open', role:'leo'|'court'} {action:'close'}
+   Roles: 'court' (judge/lawyer) is read-only - the Arrest Calculator and
+   Units tabs, BOLO create form and every action button are hidden (CSS
+   .role-court .leo-only). The server enforces the same role on every
+   callback, so hiding here is presentation only.
    ============================================================ */
 (function () {
   'use strict';
@@ -34,8 +43,9 @@
     activeCam: null,          // { id, label }
     feeds: [],                // [{id,label}] from loadCameras (for prev/next)
     bodycam: false,
+    role: 'leo',              // 'leo' | 'court' (court = judge/lawyer, read-only)
     loadingPenal: false,
-    loaded: { dashboard: false, bolos: false, warrants: false, cameras: false },
+    loaded: { dashboard: false, bolos: false, warrants: false, cameras: false, bodycam: false },
     lightbox: { images: [], index: 0 }    // images of the BOLO currently in the viewer
   };
 
@@ -75,7 +85,7 @@
   }
 
   function spinnerHTML(label) {
-    return `<div class="loading-box"><div class="spinner"></div><span>${escapeHtml(label || 'Loading…')}</span></div>`;
+    return `<div class="loading-box"><div class="spinner"></div><span>${escapeHtml(label || 'Loading...')}</span></div>`;
   }
 
   // shows a spinner into el only if work takes > 300ms (no flicker on fast calls)
@@ -154,10 +164,21 @@
   // ------------------------------------------------------------------
   // Open / close
   // ------------------------------------------------------------------
-  function openMdt(plate) {
+  function openMdt(plate, role) {
+    const newRole = (role === 'court') ? 'court' : 'leo';
+    if (state.role !== newRole) {
+      // role changed since last open (job change) -> stale caches must reload
+      state.loaded = { dashboard: false, bolos: false, warrants: false, cameras: false, bodycam: false };
+    }
+    state.role = newRole;
+    app.classList.toggle('role-court', newRole === 'court');
     app.classList.remove('hidden');
     loadPenalCode();            // static; needed by calculator + modifier labels
-    loadDashboard(true);        // landing tab
+    if (newRole === 'court') {
+      showTab('person');        // court landing tab (Units is LEO-only)
+    } else {
+      loadDashboard(true);      // landing tab
+    }
     if (plate) {                // radar HUD: jump to the vehicle tab + run the plate
       showTab('vehicle');
       const pi = document.querySelector('#vehicle-plate');
@@ -177,7 +198,7 @@
 
   window.addEventListener('message', (e) => {
     const d = e.data || {};
-    if (d.action === 'open') openMdt(d.plate);
+    if (d.action === 'open') openMdt(d.plate, d.role);
     else if (d.action === 'close') hideMdt();
     else if (d.action === 'camFeed') {            // initial feed open OR arrow switch
       state.activeCam = { id: d.id, label: d.label };
@@ -200,29 +221,38 @@
     else if (d.action === 'downscaleMugshot') {   // raw booking photo -> resize -> return small
       downscaleMugshot(d.src);
     }
+    else if (d.action === 'downscaleBodycam') {   // raw bodycam frame -> resize -> return small
+      downscaleImage(d.src, 'bodycamProcessed', 480, 0.7);
+    }
+    else if (d.action === 'bodycamState') {       // client force-stopped the cam (unload etc.)
+      state.bodycam = !!d.on;
+      updateBodycam();
+    }
   });
 
-  // Resize a raw screenshot data URI down to a small mugshot and hand it back to
-  // the client (which sends it to the server). Runs entirely in our own NUI, so
-  // it never depends on screenshot-basic's page being patched.
-  function downscaleMugshot(src) {
-    const done = (small) => nui('mugProcessed', { src: small || '' });
+  // Resize a raw screenshot data URI down to a small image and hand it back to
+  // the client via the named NUI callback (which sends it to the server). Runs
+  // entirely in our own NUI, so it never depends on screenshot-basic's page
+  // being patched. Used by both booking mugshots and bodycam frames.
+  function downscaleImage(src, cbName, maxW, quality) {
+    const done = (small) => nui(cbName, { src: small || '' });
     if (!src) { done(''); return; }
     const im = new Image();
     im.onload = () => {
       try {
-        const maxW = 512;
-        const scale = Math.min(1, maxW / (im.width || maxW));
+        const w = maxW || 512;
+        const scale = Math.min(1, w / (im.width || w));
         const c = document.createElement('canvas');
-        c.width = Math.max(1, Math.round((im.width || maxW) * scale));
-        c.height = Math.max(1, Math.round((im.height || maxW) * scale));
+        c.width = Math.max(1, Math.round((im.width || w) * scale));
+        c.height = Math.max(1, Math.round((im.height || w) * scale));
         c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
-        done(c.toDataURL('image/jpeg', 0.82));
+        done(c.toDataURL('image/jpeg', quality || 0.82));
       } catch (e) { done(''); }
     };
     im.onerror = () => done('');
     im.src = src;
   }
+  function downscaleMugshot(src) { downscaleImage(src, 'mugProcessed', 512, 0.82); }
 
   document.addEventListener('keydown', (e) => {
     if (app.classList.contains('hidden')) return;
@@ -252,7 +282,12 @@
   // ------------------------------------------------------------------
   // Tabs
   // ------------------------------------------------------------------
+  // Tabs the court role can never land on (their rail buttons are hidden by
+  // CSS; this guard also covers programmatic showTab calls).
+  const COURT_BLOCKED_TABS = { dashboard: true, calculator: true };
+
   function showTab(tab) {
+    if (state.role === 'court' && COURT_BLOCKED_TABS[tab]) tab = 'person';
     $$('.rail-btn').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
     $$('.tab-panel').forEach((p) => p.classList.toggle('active', p.dataset.tab === tab));
 
@@ -260,7 +295,12 @@
     else if (tab === 'calculator') loadPenalCode();
     else if (tab === 'bolos' && !state.loaded.bolos) loadBolos();
     else if (tab === 'warrants') loadWarrants();   // auto-refresh every open
-    else if (tab === 'cameras' && !state.loaded.cameras) loadCameras();
+    else if (tab === 'cameras') {
+      // live feeds are LEO-only (hidden + denied for court); the bodycam
+      // archive loads for both roles
+      if (state.role !== 'court' && !state.loaded.cameras) loadCameras();
+      if (!state.loaded.bodycam) loadBodycam();
+    }
   }
 
   // ------------------------------------------------------------------
@@ -268,7 +308,7 @@
   // ------------------------------------------------------------------
   async function loadDashboard(silent) {
     const list = $('#dash-list');
-    const stop = delayedSpinner(list, 'Loading units…');
+    const stop = delayedSpinner(list, 'Loading units...');
     const data = await nui('getDashboard', {});
     stop();
     state.loaded.dashboard = true;
@@ -423,12 +463,68 @@
     $('#per-total-citations').textContent = t.citations || 0;
     $('#per-total-imprisonments').textContent = t.imprisonments || 0;
 
+    renderWanted(data.wanted);
+
     renderOutstanding(Array.isArray(data.outstanding) ? data.outstanding : []);
     renderHistory(Array.isArray(data.history) ? data.history : []);
 
     // carry the NAME as the arrest target (NO cid anywhere)
     state.target = { name: data.name };
     updateTargetChip();
+  }
+
+  // ------------------------------------------------------------------
+  // Wanted level (0-5). Stars are inline SVG (no unicode chars anywhere).
+  // LEO can set it (select + reason + Set -> setWanted); court is read-only
+  // (.wanted-set carries .leo-only). The server re-checks the role.
+  // ------------------------------------------------------------------
+  const STAR_PATH = '<path d="M12 3.2l2.5 5.4 5.9.7-4.4 4 1.2 5.8-5.2-2.9-5.2 2.9 1.2-5.8-4.4-4 5.9-.7z"/>';
+
+  function starsHTML(level, size) {
+    let html = '';
+    for (let i = 1; i <= 5; i++) {
+      html += `<svg class="wanted-star${i <= level ? ' on' : ''}" viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true">${STAR_PATH}</svg>`;
+    }
+    return html;
+  }
+
+  function wantedLevelOf(w) {
+    const n = Number(w && typeof w === 'object' ? w.level : w) || 0;
+    return Math.max(0, Math.min(5, Math.floor(n)));
+  }
+
+  function renderWanted(w) {
+    const bar = $('#per-wanted-bar');
+    if (!bar) return;
+    const level = wantedLevelOf(w);
+    $('#per-wanted-stars').innerHTML = starsHTML(level, 15);
+    const txt = $('#per-wanted-text');
+    txt.textContent = level > 0 ? `WANTED ${level}/5` : 'NOT WANTED';
+    txt.className = 'wanted-text' + (level >= 3 ? ' danger' : (level > 0 ? ' warn' : ''));
+    bar.classList.toggle('is-high', level >= 3);
+    const reason = (level > 0 && w && w.reason) ? String(w.reason) : '';
+    const reasonEl = $('#per-wanted-reason');
+    reasonEl.textContent = reason;
+    reasonEl.title = reason;
+    const sel = $('#wanted-level-sel');
+    if (sel) sel.value = String(level);
+  }
+
+  async function setWantedFromUI() {
+    if (!state.target || !state.target.name) { toast('Search a person first.', 'warn'); return; }
+    const level = Number($('#wanted-level-sel').value) || 0;
+    const reason = $('#wanted-reason-inp').value.trim();
+    setBusy('#wanted-set-btn', true);
+    const res = await nui('setWanted', { name: state.target.name, level, reason });
+    setBusy('#wanted-set-btn', false);
+    if (res && res.success) {
+      toast(res.message || 'Wanted level updated.', 'ok');
+      $('#wanted-reason-inp').value = '';
+      renderWanted(res.wanted || { level, reason });
+      state.loaded.warrants = false;   // warrant rows show stars - refetch on next open
+    } else {
+      toast((res && res.message) || 'Failed to set wanted level.', 'err');
+    }
   }
 
   function renderOutstanding(rows) {
@@ -530,7 +626,7 @@
       if (done || !bodyEl) return;
       node = document.createElement('div');
       node.className = 'loading-box';
-      node.innerHTML = '<div class="spinner"></div><span>Searching…</span>';
+      node.innerHTML = '<div class="spinner"></div><span>Searching...</span>';
       bodyEl.appendChild(node);
     }, 300);
     return () => { done = true; clearTimeout(t); if (node) node.remove(); };
@@ -545,7 +641,7 @@
     const q = $('#charge-search').value.trim().toLowerCase();
 
     if (!state.penal.charges.length) {
-      list.innerHTML = `<div class="empty pad">${state.loadingPenal ? 'Loading penal code…' : 'Penal code unavailable.'}</div>`;
+      list.innerHTML = `<div class="empty pad">${state.loadingPenal ? 'Loading penal code...' : 'Penal code unavailable.'}</div>`;
       $('#available-count').textContent = '0';
       return;
     }
@@ -754,6 +850,13 @@
   // ------------------------------------------------------------------
   async function loadBolos() {
     const list = $('#bolo-list');
+    if (state.role === 'court') {
+      // court cannot read BOLOs (server denies getBolos); show an honest
+      // notice instead of a misleading "no active BOLOs" empty state
+      state.loaded.bolos = true;
+      list.innerHTML = emptyHTML(ICON.eye, 'Restricted section', 'BOLO alerts are limited to law enforcement.');
+      return;
+    }
     const stop = delayedSpinner(list, 'Loading BOLOs...');
     const data = await nui('getBolos', {});
     stop();
@@ -917,11 +1020,11 @@
   }
 
   // ------------------------------------------------------------------
-  // Warrants (derived, read-only) - name · charges · months · fine
+  // Warrants (derived, read-only) - name - charges - months - fine
   // ------------------------------------------------------------------
   async function loadWarrants() {
     const list = $('#warrant-list');
-    const stop = delayedSpinner(list, 'Loading warrants…');
+    const stop = delayedSpinner(list, 'Loading warrants...');
     const data = await nui('getWarrants', {});
     stop();
     state.loaded.warrants = true;
@@ -932,6 +1035,10 @@
     }
     const frag = document.createDocumentFragment();
     items.forEach((w) => {
+      const wl = wantedLevelOf(w.wanted);
+      const wantedPill = wl > 0
+        ? `<span class="pill wanted-pill ${wl >= 3 ? 'danger' : 'warn'}">${starsHTML(wl, 12)}<span class="pv tnum">${wl}/5</span></span>`
+        : '';
       const row = document.createElement('div');
       row.className = 'list-row';
       row.innerHTML =
@@ -940,6 +1047,7 @@
           `<div class="list-meta">Outstanding charges on record</div>` +
         `</div>` +
         `<div class="list-right">` +
+          wantedPill +
           `<span class="pill danger"><span class="pv tnum">${Number(w.charges) || 0}</span> charges</span>` +
           `<span class="pill warn"><span class="pv tnum">${Number(w.months) || 0}</span> min</span>` +
           `<span class="pill"><span class="pv tnum">${money(w.fine)}</span> fine</span>` +
@@ -965,7 +1073,7 @@
   // ------------------------------------------------------------------
   async function loadCameras() {
     const grid = $('#camera-grid');
-    const stop = delayedSpinner(grid, 'Loading feeds…');
+    const stop = delayedSpinner(grid, 'Loading feeds...');
     const data = await nui('getCameras', {});
     stop();
     state.loaded.cameras = true;
@@ -989,6 +1097,53 @@
     grid.innerHTML = '';
     grid.appendChild(frag);
     markActiveCam();
+  }
+
+  // ------------------------------------------------------------------
+  // Bodycam Archive - recent captures (newest 30), officer + timestamp.
+  // Clicking an entry opens the frame in the existing fullscreen lightbox.
+  // Available to both roles (court is read-only; server enforces).
+  // ------------------------------------------------------------------
+  async function loadBodycam() {
+    const list = $('#bodycam-list');
+    if (!list) return;
+    const stop = delayedSpinner(list, 'Loading captures...');
+    const data = await nui('getBodycam', {});
+    stop();
+    state.loaded.bodycam = true;
+    const items = (data && Array.isArray(data.items)) ? data.items : [];
+    const count = $('#bodycam-count');
+    if (count) count.textContent = String(items.length);
+    if (!items.length) {
+      list.innerHTML = emptyHTML(ICON.camera, 'No bodycam captures',
+        'Frames are archived while an officer bodycam is recording.');
+      return;
+    }
+    const frag = document.createDocumentFragment();
+    items.forEach((c) => {
+      const src = mugSrc(c.image);
+      const row = document.createElement('div');
+      row.className = 'list-row' + (src ? ' click' : '');
+      row.innerHTML =
+        `<span class="cam-thumb bodycam-thumb">` +
+          (src
+            ? `<img class="bodycam-thumb-img" alt="Bodycam frame" src="${escapeHtml(src)}" />`
+            : `<svg class="ic" viewBox="0 0 24 24" width="20" height="20">${ICON.camera}</svg>`) +
+        `</span>` +
+        `<div class="list-main">` +
+          `<div class="list-top"><span class="list-title">${escapeHtml(c.officer || 'Unknown officer')}</span></div>` +
+          `<div class="list-meta mono">${escapeHtml(c.captured_at || '-')}</div>` +
+        `</div>` +
+        (src ? `<span class="pill">View</span>` : `<span class="pill warn">No image</span>`);
+      if (src) row.addEventListener('click', () => openLightbox([src], 0));
+      const thumb = row.querySelector('.bodycam-thumb-img');
+      if (thumb) thumb.addEventListener('error', () => {
+        thumb.outerHTML = `<svg class="ic" viewBox="0 0 24 24" width="20" height="20">${ICON.camera}</svg>`;
+      });
+      frag.appendChild(row);
+    });
+    list.innerHTML = '';
+    list.appendChild(frag);
   }
 
   // ---- Camera mode: the overlay is INFO ONLY. There is no cursor in cam-mode
@@ -1062,7 +1217,9 @@
   // page has no focus in cam-mode, so it cannot receive key or wheel events.
 
   // ------------------------------------------------------------------
-  // Bodycam (stub REC indicator)
+  // Bodycam REC toggle. The client owns the REAL capture loop (a frame on
+  // toggle + every 60s via screenshot-basic); we just reflect its on/off
+  // state on the button and the corner REC indicator.
   // ------------------------------------------------------------------
   let recTimer = null, recStart = 0;
   function tickRec() {
@@ -1126,6 +1283,10 @@
       toast('Target set: ' + state.target.name, 'ok');
     });
 
+    // Wanted level setter (LEO only; hidden for court via .leo-only)
+    $('#wanted-set-btn').addEventListener('click', setWantedFromUI);
+    $('#wanted-reason-inp').addEventListener('keydown', (e) => { if (e.key === 'Enter') setWantedFromUI(); });
+
     // Calculator
     let searchTimer;
     $('#charge-search').addEventListener('input', () => {
@@ -1163,8 +1324,9 @@
 
     // Cameras: tiles wire their own click in loadCameras, and the in-feed
     // overlay is info-only now (no cursor in cam-mode), so there are no overlay
-    // buttons to wire. Only the Bodycam toggle remains.
+    // buttons to wire. Bodycam toggle + archive refresh remain.
     $('#bodycam-btn').addEventListener('click', toggleBodycam);
+    $('#bodycam-archive-refresh').addEventListener('click', loadBodycam);
 
     renderCart();
     recompute();

@@ -459,6 +459,46 @@ To find drawable IDs: use a ped component browser in-game or check [forge.plebma
 
 ---
 
+## Wave 2 Additions (2026-07-01)
+
+### New custom resources (`resources/[local]/`)
+| Resource | What it does | Key commands |
+|---|---|---|
+| `pengu_court` | Court sessions: docket, pleas (guilty = 25% cut), verdicts, optional 3-5 player jury ($200/vote), lawyer /objection | `/docket` `/courtstart` `/verdict` `/jury` `/courtend` (judge) |
+| `pengu_finance` | Credit scores (300-850), tiered loans w/ interest + garnishment, 5% income tax -> government account, hourly business payroll | `/credit` `/loan apply|pay|status` |
+| `pengu_gov` | Mayor elections + powers: tax rate, pardons (24h cd), announcements | `/election open|close|status` (ace pengu.gov), `/runformayor` `/vote`, mayor: `/settaxrate` `/mayorpardon` `/mayorannounce` |
+| `pengu_nightclub` | DJ booth (xsound URL music, 40m falloff), drinks bar, pulse lights at the Galaxy club | `/djstop` at booth |
+| `pengu_pettycrime` | ATM hacking (trojan_usb + skillcheck, $300-700 dirty) + parking meter theft (lockpick, $40-120 cash); world props, server-side cooldowns | none (ox_target) |
+
+### New vendored 3rd-party (`resources/[standalone]/`, patched + security-scanned)
+| Resource | Source | Patches |
+|---|---|---|
+| `DiamondBlackjack` | rubbertoe98/DiamondBlackjack | qbx money wiring, bet limits/floor, build-3751 stream strip |
+| `keep-companion-ox` + `qb-menu` + `qb-input` | alberttheprince fork + qbcore | Qbox bridge fixes, K9 ped streaming, 21 items+icons in ox_inventory |
+| `Icarus` | EinS4ckZwiebeln/IcarusAdvancedAnticheat | LOG-ONLY mode (no bans), owner bypass aces, 6 modules disabled vs false positives, telemetry off |
+| `xsound` | Xogy/xsound | none (standalone URL audio for the nightclub) |
+| `FiveM-Golf` | alberttheprince/FiveM-Golf | none (9-hole GWC course, client-only) |
+
+### Major feature additions inside existing resources
+- **pengu_mdt**: WANTED LEVELS 1-5 (auto from charge severity, offline decay, dispatch BOLO pings at 3+, stars in Person/Warrants tabs, `/wanted` `/unwanted`, GetWantedLevel/SetWantedLevel exports) + real bodycam (60s captures -> pengu_mdt_bodycam, archive in Cameras tab) + judge/lawyer court role (read-only MDT).
+- **pengu_jobs**: DELIVERY job (depot point type via /jobloc, 3-5 stops, distance pay, package items, 30min expiry) + XP perks consume pengu_xp levels (gather cooldown -20%, sell +10% at L5).
+- **pengu_core**: 4 new world events (drug_bust, prison_riot, vip_transport, arms_deal) in the /startevent rotation (ace pengu.admin); marriage joint bank account (Renewed-Banking shared account); steroid/adrenaline consumable effects.
+- **pengu_xp**: new 'delivery' category; GetLevel/GetXP + category exports.
+- **qbx_core**: income tax on paychecks (reads GlobalState.penguTaxRate, default 5%, deposits to 'government' society account) - override in `overrides/`.
+- **qbx_consumables** (qbx_smallresources): 3-stage drunk effect (stagger clipsets, cam shake, ragdoll, timecycle).
+- **qbx_ambulancejob**: `medikit` registered as useable (full heal/revive).
+- **ox_inventory**: gun-crafting bench at Rogers Salvage (pistol/SNS/knife/ammo from mining+smelting+chop parts, data/crafting.lua); expanded 24/7 shop; ~30 new items (steroid, adrenaline_shot, wallet, business_license, package, pets).
+- **qbx tuning**: radialmenu (dead qb-* refs removed, npwd/vehiclekeys/scully wired), seatbelt (MPH, ejection thresholds), scoreboard (per-job duty counts), density (0.6/0.7), garages (vagos+triads), cityhall business license ($500, gates pengu_business buys), properties (5% realtor commission), adminmenu (/report -> Discord via pengu_report_webhook convar).
+
+### New aces in server.cfg
+`pengu.gov` (elections), `pengu.admin` (/startevent), `icarus.bypass` (anticheat owner bypass) - all placeholdered; plus `permissions.cfg` grants resource.Icarus `command.add_ace`.
+
+### Deliberately skipped (no legitimate free source)
+Darts/pool (codem is paid), train robbery (ps-train does not exist; only leaked paid scripts found), SecureServe second anticheat (two ACs = false positives).
+
+
+---
+
 ## License
 
 Private — all rights reserved. Not for public distribution.

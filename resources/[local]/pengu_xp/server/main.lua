@@ -91,6 +91,45 @@ exports('Award', function(src, category, amount)
     end
 end)
 
+-- ===================== level/xp lookup exports =====================
+-- consumed by pengu_jobs perks; offline/invalid src -> level 1 / 0 xp
+exports('GetLevel', function(src, category)
+    local cat = Config.categories[category]
+    if not cat then return 1 end
+    src = tonumber(src)
+    if not src then return 1 end
+    local p = qbx:GetPlayer(src)
+    if not p then return 1 end
+    local data = xpCache[p.PlayerData.citizenid]
+    return calcLevel((data and data[category]) or 0, cat.thresholds)
+end)
+
+exports('GetXP', function(src, category)
+    if not Config.categories[category] then return 0 end
+    src = tonumber(src)
+    if not src then return 0 end
+    local p = qbx:GetPlayer(src)
+    if not p then return 0 end
+    local data = xpCache[p.PlayerData.citizenid]
+    return (data and data[category]) or 0
+end)
+
+-- ptype -> XP category maps (single source of truth stays in this config)
+exports('GetGatherCategory', function(ptype)
+    local m = Config.jobsXP[ptype]
+    return m and m.category or nil
+end)
+
+exports('GetSellCategory', function(ptype)
+    local m = Config.sellXP[ptype]
+    return m and m.category or nil
+end)
+
+exports('GetDeliveryCategory', function()
+    local m = Config.deliveryXP
+    return m and m.category or nil
+end)
+
 -- ===================== playtime tracking =====================
 AddEventHandler('QBCore:Server:PlayerLoaded', function()
     local src = source
@@ -159,6 +198,13 @@ end)
 -- ===================== hook: pengu_jobs sell =====================
 AddEventHandler('pengu_xp:onSell', function(src, ptype)
     local mapping = Config.sellXP[ptype]
+    if not mapping then return end
+    exports.pengu_xp:Award(src, mapping.category, mapping.amount)
+end)
+
+-- ===================== hook: pengu_jobs delivery (per delivered stop) =====================
+AddEventHandler('pengu_xp:onDelivery', function(src)
+    local mapping = Config.deliveryXP
     if not mapping then return end
     exports.pengu_xp:Award(src, mapping.category, mapping.amount)
 end)

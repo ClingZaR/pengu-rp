@@ -6,6 +6,9 @@ local zoneIds = {}
 local blips = {}
 local busy = false
 
+-- perk tables for pengu_xp's /myxp display (keeps Config.perks as the single source of truth)
+exports('GetPerks', function() return Config.perks end)
+
 -- world visuals: a relevant ped/prop placed AT each point so the spot is visible up close (a blip alone
 -- only helps on the map). Distance-streamed so collision is loaded when it spawns (correct ground
 -- placement) and far points cost nothing. Populated by rebuild() from Config.visuals[ptype].
@@ -147,6 +150,163 @@ local function openShop(point, def)
     lib.showContext('pengu_jobs_shop_' .. point.id)
 end
 
+-- ---------- delivery (depot -> courier route) ----------
+-- server owns the route (stop list, pay, expiry); the client only draws GPS/marker for the
+-- CURRENT stop and runs the hand-over progress. One ox_target zone tracks the current stop.
+local route = nil -- { stops = { {x,y,z,label} }, idx }
+local stopZone = nil
+local markerActive = false
+local buildStopZone -- forward-declared (runDeliver advances the zone)
+
+local function clearStopZone()
+    if stopZone then exports.ox_target:removeZone(stopZone); stopZone = nil end
+end
+
+local function clearRoute()
+    route = nil
+    clearStopZone()
+end
+
+local function pointStop()
+    local s = route and route.stops[route.idx]
+    if s then SetNewWaypoint(s.x + 0.0, s.y + 0.0) end
+    return s
+end
+
+local function runDeliver()
+    if busy or not route then return end
+    busy = true
+    local prog = lib.progressCircle({
+        label = 'Handing over the package',
+        duration = (Config.delivery and Config.delivery.deliverTime) or 5000,
+        position = 'bottom',
+        useWhileDead = false,
+        canCancel = true,
+        disable = { move = true, car = true, combat = true },
+        anim = { dict = 'anim@heists@box_carry@', clip = 'idle' },
+    })
+    if prog then
+        local res = lib.callback.await('pengu_jobs:deliverStop', false)
+        if res and res.ok and route then
+            if res.finished then
+                clearRoute()
+                lib.notify({ title = 'Delivery', description = 'Route complete.', type = 'success' })
+            else
+                route.idx = res.nextIdx or (route.idx + 1)
+                buildStopZone()
+                local s = pointStop()
+                if s then lib.notify({ title = 'Delivery', description = ('Next stop: %s'):format(s.label or 'stop'), type = 'inform' }) end
+            end
+        elseif route then
+            lib.notify({ title = 'Delivery', description = 'Could not deliver here.', type = 'error' })
+        end
+    end
+    busy = false
+end
+
+buildStopZone = function()
+    clearStopZone()
+    local s = route and route.stops[route.idx]
+    if not s then return end
+    local ddef = Config.deliveryTypes and Config.deliveryTypes.depot
+    stopZone = exports.ox_target:addSphereZone({
+        coords = vector3(s.x + 0.0, s.y + 0.0, s.z + 0.0),
+        radius = (Config.delivery and Config.delivery.deliverDist) or 5.0,
+        debug = false,
+        options = {
+            {
+                name = 'pengu_jobs_deliver',
+                icon = (ddef and ddef.icon) or 'fa-solid fa-box',
+                label = 'Deliver Package',
+                onSelect = runDeliver,
+            },
+        },
+    })
+end
+
+local function startMarkerThread()
+    if markerActive then return end
+    markerActive = true
+    CreateThread(function()
+        local ddef = Config.deliveryTypes and Config.deliveryTypes.depot
+        local m = (ddef and ddef.marker) or { r = 230, g = 190, b = 90 }
+        while route do
+            local s = route.stops[route.idx]
+            if s then
+                local d = #(GetEntityCoords(PlayerPedId()) - vector3(s.x, s.y, s.z))
+                if d < 60.0 then
+                    DrawMarker(1, s.x, s.y, s.z - 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                        2.5, 2.5, 1.2, m.r, m.g, m.b, 110, false, false, 2, false, nil, nil, false)
+                    Wait(0)
+                else
+                    Wait(500)
+                end
+            else
+                Wait(500)
+            end
+        end
+        markerActive = false
+    end)
+end
+
+local function startRoute(point)
+    if busy or route then return end
+    busy = true
+    local prog = lib.progressCircle({
+        label = 'Loading packages',
+        duration = (Config.delivery and Config.delivery.loadTime) or 3000,
+        position = 'bottom',
+        useWhileDead = false,
+        canCancel = true,
+        disable = { move = true, car = true, combat = true },
+        anim = { dict = 'anim@heists@box_carry@', clip = 'idle' },
+    })
+    if prog then
+        local res = lib.callback.await('pengu_jobs:startDelivery', false, point.id)
+        if res and type(res) == 'table' and res.stops and #res.stops > 0 then
+            route = { stops = res.stops, idx = 1 }
+            buildStopZone()
+            startMarkerThread()
+            local s = pointStop()
+            lib.notify({ title = 'Delivery', description = ('%d stops. First: %s'):format(#res.stops, (s and s.label) or 'stop'), type = 'success' })
+        else
+            lib.notify({ title = 'Delivery', description = 'Could not start a route.', type = 'error' })
+        end
+    end
+    busy = false
+end
+
+local function openDepot(point, def)
+    local dcfg = Config.delivery or {}
+    local options = {}
+    if route then
+        options[#options + 1] = {
+            title = 'Abandon Delivery Route',
+            description = 'Remaining packages are taken back.',
+            icon = 'fa-solid fa-ban',
+            onSelect = function() lib.callback.await('pengu_jobs:abandonDelivery', false) end,
+        }
+    else
+        options[#options + 1] = {
+            title = 'Start Delivery Route',
+            description = ('%d-%d stops. $%d base + distance pay per delivery.'):format(dcfg.minStops or 3, dcfg.maxStops or 5, dcfg.basePay or 120),
+            icon = def.icon or 'fa-solid fa-truck-fast',
+            onSelect = function() startRoute(point) end,
+        }
+    end
+    lib.registerContext({ id = 'pengu_jobs_depot_' .. point.id, title = point.label or def.label or 'Depot', options = options })
+    lib.showContext('pengu_jobs_depot_' .. point.id)
+end
+
+RegisterNetEvent('pengu_jobs:routeClosed', function(reason)
+    if not route then return end
+    clearRoute()
+    local msg = 'Delivery route ended.'
+    if reason == 'expired' then msg = 'Your delivery route expired - remaining packages were taken back.'
+    elseif reason == 'abandoned' then msg = 'Delivery route abandoned - remaining packages were taken back.' end
+    lib.notify({ title = 'Delivery', description = msg, type = 'inform' })
+end)
+
 -- ---------- zones ----------
 local function rebuild(points)
     clearZones()
@@ -156,7 +316,8 @@ local function rebuild(points)
         local gdef = Config.gatherTypes[point.ptype]
         local sdef = Config.sellTypes[point.ptype]
         local shdef = Config.shopTypes and Config.shopTypes[point.ptype]
-        local def = gdef or sdef or shdef
+        local ddef = Config.deliveryTypes and Config.deliveryTypes[point.ptype]
+        local def = gdef or sdef or shdef or ddef
         if def then
             local ref = point
 
@@ -167,7 +328,8 @@ local function rebuild(points)
             end
             local label = gdef and ('Work (' .. def.label .. ')')
                 or sdef and ('Sell (' .. def.label .. ')')
-                or ('Shop (' .. def.label .. ')')
+                or shdef and ('Shop (' .. def.label .. ')')
+                or ('Deliveries (' .. def.label .. ')')
 
             -- discoverable map blip
             local bc = (Config.blips and Config.blips[point.ptype]) or Config.blipDefault or { sprite = 1, colour = 0 }
@@ -193,7 +355,8 @@ local function rebuild(points)
                         onSelect = function()
                             if gdef then openGather(ref, gdef)
                             elseif sdef then openSell(ref, sdef)
-                            else openShop(ref, shdef) end
+                            elseif shdef then openShop(ref, shdef)
+                            else openDepot(ref, ddef) end
                         end,
                     },
                 },
@@ -214,8 +377,10 @@ RegisterNetEvent('QBCore:Client:OnPlayerLoaded', function()
     rebuild(points)
 end)
 
+RegisterNetEvent('QBCore:Client:OnPlayerUnload', function() clearRoute() end)
+
 AddEventHandler('onResourceStop', function(res)
-    if res == GetCurrentResourceName() then clearZones(); clearAllViz() end
+    if res == GetCurrentResourceName() then clearZones(); clearAllViz(); clearRoute() end
 end)
 
 TriggerEvent('chat:addSuggestion', '/jobloc', 'Manage job points (admin)', {

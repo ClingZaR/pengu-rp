@@ -186,6 +186,17 @@ lib.callback.register('pengu_drugs:process', function(src, labId, recipeIdx)
         end
         DrugNotify(src, ('Produced %s.'):format(recipe.label or 'product'), 'success')
         TriggerEvent('pengu_xp:onDrugProcess', src)
+        -- [pengu_core drug_bust hook] while a bust window is live on this lab group, processing
+        -- pays double drug XP and risks a dispatch ping (chance + rate limit live in pengu_core;
+        -- the TriggerEvent below is a no-op when pengu_core is off). pcall-safe, sane defaults.
+        local okB, bust = pcall(function() return GlobalState.penguDrugBust end)
+        if okB and type(bust) == 'table' and bust.group then
+            local gkey = (lab.group_name and lab.group_name ~= '' and lab.group_name) or tostring(lab.id)
+            if gkey == tostring(bust.group) and os.time() < (tonumber(bust.endsAt) or 0) then
+                pcall(function() exports.pengu_xp:Award(src, 'drugs', tonumber(bust.bonusXP) or 30) end)
+                TriggerEvent('pengu_core:server:drugBustPing', src, lab.x, lab.y, lab.z)
+            end
+        end
     end
     return result
 end)

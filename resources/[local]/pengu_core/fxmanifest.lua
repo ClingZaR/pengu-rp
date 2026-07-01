@@ -22,6 +22,7 @@ client_scripts {
     'client/dispatch.lua',  -- shared dispatch relay (ps-dispatch:CustomAlert handler)
     'client/marriage.lua',
     'client/events.lua',
+    'client/consumables.lua', -- ox_inventory item effects (steroid / adrenaline_shot)
 }
 
 server_scripts {

@@ -67,8 +67,8 @@ Config.dealerTypes = {
     },
 
     -- Black market doctor: player BUYS from him using dirty money.
-    -- Items below need to exist in ox_inventory items.lua.
-    -- Add: bandage, medkit, steroid, adrenaline_shot (or swap for what you have).
+    -- All items below exist in ox_inventory items.lua (steroid/adrenaline_shot effects are in
+    -- pengu_core/client/consumables.lua).
     doctor = {
         label  = 'Black Market Doctor',
         model  = 's_m_m_doctor_01',
@@ -76,9 +76,6 @@ Config.dealerTypes = {
         sells  = {
             { item = 'bandage',         label = 'Field Bandage (x5)',      price = 800,   count = 5, minLevel = 1 },
             { item = 'medikit',         label = 'Combat Medkit',           price = 4500,  count = 1, minLevel = 2 }, -- fixed typo: item is 'medikit'
-            -- NOTE: 'steroid' and 'adrenaline_shot' do NOT exist in ox_inventory items.lua, so these two
-            -- entries silently fail ("Transaction failed"). Either add those items, or swap them to ones
-            -- you have, e.g. firstaid / ifaks / painkillers. Left as-is in case they are planned items.
             { item = 'steroid',         label = 'Performance Steroid',     price = 10000, count = 1, minLevel = 3 },
             { item = 'adrenaline_shot', label = 'Adrenaline Shot (burst)', price = 18000, count = 1, minLevel = 4 },
             -- (removed 'armor_kit' - that item does not exist in ox_inventory; body armor is its own dealer now)

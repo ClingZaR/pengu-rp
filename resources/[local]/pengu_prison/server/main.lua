@@ -98,7 +98,16 @@ RegisterNetEvent('pengu_prison:labor', function(key)
     end
     laborCd[cdKey] = os.time()
 
-    local newTime = exports['pengu_core']:ReduceJailMinutes(src, station.reduceMin)
+    -- [pengu_core prison_riot hook] labor works off DOUBLE time while a riot world event is
+    -- live (GlobalState.penguPrisonRiot set by pengu_core). pcall-safe, sane defaults, and the
+    -- endsAt check makes a stale flag harmless if pengu_core is off.
+    local reduceMin = station.reduceMin
+    local okR, riot = pcall(function() return GlobalState.penguPrisonRiot end)
+    if okR and type(riot) == 'table' and os.time() < (tonumber(riot.endsAt) or 0) then
+        reduceMin = reduceMin * (tonumber(riot.mult) or 2)
+    end
+
+    local newTime = exports['pengu_core']:ReduceJailMinutes(src, reduceMin)
 
     if Config.labor.cashItem and station.rewardMax > 0 then
         local reward = math.random(station.rewardMin, station.rewardMax)

@@ -17,6 +17,7 @@
     wrench:'<path d="M14.7 6.3a4 4 0 0 0-5.4 5.3L3 18l3 3 6.4-6.3a4 4 0 0 0 5.3-5.4l-2.6 2.6-2.3-.6-.6-2.3z"/>',
     trash: '<path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>',
     check: '<path d="M20 6L9 17l-5-5"/>',
+    pencil:'<path d="M17 3a2.8 2.8 0 0 1 4 4L7.5 20.5 3 21l.5-4.5z"/><path d="M15 5l4 4"/>',
     car:   '<path d="M5 11l1.6-4.2A2 2 0 0 1 8.5 5.5h7a2 2 0 0 1 1.9 1.3L19 11"/><rect x="3" y="11" width="18" height="6" rx="2"/><circle cx="7.5" cy="17" r="1.4"/><circle cx="16.5" cy="17" r="1.4"/>',
     suv:   '<path d="M4 12l1-5h14l1 5"/><rect x="2.5" y="12" width="19" height="6" rx="2"/><circle cx="7" cy="18" r="1.5"/><circle cx="17" cy="18" r="1.5"/><path d="M9 7v5M14 7v5"/>',
     bike:  '<circle cx="5.5" cy="17" r="3"/><circle cx="18.5" cy="17" r="3"/><path d="M5.5 17l4-7h5l2 4"/><path d="M9.5 10h4"/>',
@@ -520,6 +521,46 @@
       gl.textContent = 'G:'; gl.style.cssText = 'font-size:11px;opacity:0.6';
       gw.appendChild(gl); gw.appendChild(gradeInp); acts.appendChild(gw);
       acts.appendChild(tog);
+
+      // Inline rename: swap the row title for a text input; Enter/blur saves,
+      // Escape cancels (stopPropagation keeps Esc from closing the whole menu).
+      var renaming = false;
+      function startRename() {
+        if (renaming) return;
+        renaming = true;
+        var titleEl = row.querySelector('.pm-row-title');
+        var cur = it.name || it.preset || '';
+        titleEl.textContent = '';
+        var inp = document.createElement('input');
+        inp.type = 'text'; inp.className = 'pm-num'; inp.maxLength = 40;
+        inp.value = cur;
+        inp.style.cssText = 'width:100%;max-width:170px;text-align:left;padding:4px 8px';
+        titleEl.appendChild(inp);
+        inp.focus(); inp.select();
+        function finish(save) {
+          if (!renaming) return;
+          renaming = false;
+          var name = (inp.value || '').trim();
+          titleEl.textContent = it.name || it.preset || '';
+          if (save && name && name !== cur) {
+            nui('wardrobeRename', { id: it.id, name: name }).then(function () {
+              it.name = name;
+              titleEl.textContent = name;
+            });
+          }
+        }
+        inp.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter') { e.stopPropagation(); finish(true); }
+          else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); }
+        });
+        inp.addEventListener('blur', function () { finish(true); });
+      }
+      var ren = document.createElement('div'); ren.className = 'pm-iconbtn';
+      ren.title = 'Rename'; ren.style.marginLeft = '6px';
+      ren.innerHTML = svg('pencil');
+      ren.addEventListener('click', startRename);
+      acts.appendChild(ren);
+
       var wdel = document.createElement('div'); wdel.className = 'pm-iconbtn danger';
       wdel.title = 'Remove'; wdel.style.marginLeft = '6px';
       wdel.innerHTML = svg('trash');

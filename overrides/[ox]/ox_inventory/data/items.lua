@@ -1,9 +1,9 @@
 return {
     -- PenguRP: cola + medikit were referenced by data/shops.lua (General/Liquor/Medicine) but had no
     -- item definition -> ox_inventory logged "no item" warnings + the entries were unbuyable. cola is a
-    -- working thirst drink (effect via client.status, like sprunk/water). medikit is a basic holdable
-    -- item so the Medicine-shop entry resolves; to make it HEAL, register it in qbx_medical (this server
-    -- heals via firstaid/bandage/ifaks) or remove the medikit line from shops.lua.
+    -- working thirst drink (effect via client.status, like sprunk/water). medikit stays label+weight
+    -- only on purpose: its use logic lives in qbx_ambulancejob (CreateUseableItem 'medikit' ->
+    -- hospital:server:UseMedikit), so do NOT add a client block here.
     ['cola'] = {
         label = 'eCola',
         weight = 350,
@@ -841,6 +841,16 @@ return {
     ['hunting_knife']    = { label = 'Hunting Knife',   description = 'Required to hunt and field-dress animals.',       weight = 400, stack = false, close = false, consume = 0 },
     ['vegetable_soup']   = { label = 'Vegetable Soup',  description = 'Hearty soup from farm produce. Restores hunger and thirst.', weight = 250, stack = true,  close = true },
     ['water_bottle']     = { label = 'Water Bottle',    description = 'Clean drinking water. Restores thirst.',          weight = 100, stack = true,  close = true },
+    -- PenguRP Delivery Courier (pengu_jobs depot routes). Route-bound parcel: handed out when a
+    -- route starts, one removed per delivered stop, leftovers removed when the route closes. No other use.
+    ['package'] = {
+        label = 'Package',
+        description = 'A sealed courier parcel. Deliver it to the marked stop.',
+        weight = 500,
+        stack = true,
+        close = true,
+        image = 'evidence_box.png',
+    },
     -- PenguRP gang GRAFFITI (pengu_turf Phase 3). Used in contestable turf to tag a wall, which builds
     -- your gang's influence. Not auto-consumed (consume = 0); pengu_turf removes one server-side only on a
     -- successful tag. client.export calls pengu_turf:useSpraycan on use.
@@ -868,4 +878,200 @@ return {
     ['chop_battery']   = { label = 'Car Battery',          weight = 2000, stack = true, description = 'Vehicle battery.' },
     ['chop_radio']     = { label = 'Stereo Unit',          weight = 1200, stack = true, description = 'Head unit / stereo.' },
     ['chop_seat']      = { label = 'Leather Seat',         weight = 3500, stack = true, description = 'Stripped leather seat.' },
+
+    -- PenguRP doctor-dealer consumables + RP papers. steroid/adrenaline_shot are sold by the
+    -- pengu_dealers Black Market Doctor; effects live in pengu_core/client/consumables.lua
+    -- (the export calls exports.ox_inventory:useItem itself, which consumes the item and runs
+    -- the anim/usetime progress bar). Images reuse stock art (no dedicated pngs yet).
+    ['steroid'] = {
+        label = 'Performance Steroid',
+        description = 'Fully restores stamina and boosts sprint speed for two minutes.',
+        weight = 200,
+        stack = true,
+        close = true,
+        image = 'painkillers.png',
+        client = {
+            export = 'pengu_core.useSteroid',
+            anim = { dict = 'mp_suicide', clip = 'pill' },
+            usetime = 2500,
+        },
+    },
+    ['adrenaline_shot'] = {
+        label = 'Adrenaline Shot',
+        description = 'Instantly restores health and calms the nerves.',
+        weight = 150,
+        stack = true,
+        close = true,
+        image = 'ifaks.png',
+        client = {
+            export = 'pengu_core.useAdrenaline',
+            anim = { dict = 'mp_suicide', clip = 'pill' },
+            usetime = 1500,
+        },
+    },
+    ['wallet'] = {
+        label = 'Wallet',
+        description = 'A worn leather wallet.',
+        weight = 100,
+        consume = 0, -- RP prop; never destroyed on use
+    },
+    ['business_license'] = {
+        label = 'Business License',
+        description = 'State-issued license to operate a business.',
+        weight = 0,
+        image = 'weaponlicense.png',
+        consume = 0, -- document; never destroyed on use
+    },
+
+    -- PenguRP: keep-companion-ox pet system (resources/[standalone]/keep-companion-ox).
+    -- PenguRP: item names must match Config.pets / Config.core_items in that resource.
+    -- PenguRP: pets are unique (stack = false) because pet state lives in item metadata.
+    ['keepcompanionhusky'] = {
+        label = 'Husky',
+        weight = 5000,
+        stack = false,
+        close = true,
+        description = 'Also the nickname everyone calls you behind your back.',
+    },
+    ['keepcompanionpoodle'] = {
+        label = 'Poodle',
+        weight = 5000,
+        stack = false,
+        close = true,
+        description = 'This dog haircut is more expensive than your car.',
+    },
+    ['keepcompanionrottweiler'] = {
+        label = 'Rottweiler',
+        weight = 5000,
+        stack = false,
+        close = true,
+        description = 'A butchers best friend.',
+    },
+    ['keepcompanionwesty'] = {
+        label = 'Westie',
+        weight = 5000,
+        stack = false,
+        close = true,
+        description = 'A great breed for hunting rats, and wearing cute sweaters.',
+    },
+    ['keepcompanioncat'] = {
+        label = 'Cat',
+        weight = 5000,
+        stack = false,
+        close = true,
+        description = 'What is new, pussycat?',
+    },
+    ['keepcompanionpug'] = {
+        label = 'Pug',
+        weight = 5000,
+        stack = false,
+        close = true,
+        description = 'The snorting haunts you in your sleep.',
+    },
+    ['keepcompanionretriever'] = {
+        label = 'Retriever',
+        weight = 5000,
+        stack = false,
+        close = true,
+        description = 'Americas favorite dog.',
+    },
+    ['keepcompanionshepherd'] = {
+        label = 'Border Collie',
+        weight = 5000,
+        stack = false,
+        close = true,
+        description = 'Useful to herd your flock of sheep.',
+    },
+    ['keepcompanionrabbit'] = {
+        label = 'Rabbit',
+        weight = 5000,
+        stack = false,
+        close = true,
+        description = 'Boing boing boing boing.',
+    },
+    ['keepcompanionhen'] = {
+        label = 'Hen',
+        weight = 5000,
+        stack = false,
+        close = true,
+        description = 'A best friend AND lunch. Two for one!',
+    },
+    ['keepcompanionrat'] = {
+        label = 'Rat',
+        weight = 5000,
+        stack = false,
+        close = true,
+        description = 'Snitches get stitches, but rats get scritches.',
+    },
+    ['keepcompanionmtlion'] = {
+        label = 'Mountain Lion',
+        weight = 5000,
+        stack = false,
+        close = true,
+        description = 'Definitely legal. Definitely.',
+    },
+    ['keepcompanionmtlion2'] = {
+        label = 'Panther',
+        weight = 5000,
+        stack = false,
+        close = true,
+        description = 'Sleek, silent, and extremely illegal.',
+    },
+    ['keepcompanioncoyote'] = {
+        label = 'Coyote',
+        weight = 5000,
+        stack = false,
+        close = true,
+        description = 'Do not feed after midnight. Or ever, really.',
+    },
+    ['keepcompanionk9unit'] = {
+        label = 'K9 Unit Malinois',
+        weight = 5000,
+        stack = false,
+        close = true,
+        description = 'LSPD exclusive K9.',
+    },
+    ['petfood'] = {
+        label = 'Pet Food',
+        weight = 500,
+        stack = true,
+        close = true,
+        description = 'Nom nom for your pom pom.',
+    },
+    ['collarpet'] = {
+        label = 'Pet Collar',
+        weight = 500,
+        stack = false,
+        close = true,
+        description = 'Transfer ownership of your pet.',
+    },
+    ['firstaidforpet'] = {
+        label = 'Pet First-aid Kit',
+        weight = 500,
+        stack = true,
+        close = true,
+        description = 'Bring your pet back from the dead again and again.',
+    },
+    ['petnametag'] = {
+        label = 'Pet Name Tag',
+        weight = 500,
+        stack = true,
+        close = true,
+        description = 'Rename your pet.',
+    },
+    ['petwaterbottleportable'] = {
+        label = 'Pet Water Bottle',
+        weight = 500,
+        stack = false,
+        close = true,
+        description = 'Water for your pet. Stop trying to drink this.',
+    },
+    ['petgroomingkit'] = {
+        label = 'Pet Grooming Kit',
+        weight = 500,
+        stack = false,
+        close = true,
+        description = 'Now your pet can pass a wave check.',
+    },
+    -- PenguRP: end keep-companion-ox items
 }

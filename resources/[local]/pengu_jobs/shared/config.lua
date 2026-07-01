@@ -162,6 +162,62 @@ Config.shopTypes = {
     },
 }
 
+-- DELIVERY point types: a depot where players start a courier route (3-5 random stops from
+-- Config.deliveryStops, one 'package' item per stop, paid per delivered stop by the server).
+Config.deliveryTypes = {
+    depot = {
+        label  = 'Delivery Depot',
+        icon   = 'fa-solid fa-truck-fast',
+        marker = { r = 230, g = 190, b = 90 },
+    },
+}
+
+-- Delivery tuning. Payment per stop = basePay + (depot->stop metres / 100) * payPer100m, capped
+-- by maxDistancePay, then scaled by the delivery perk. All computed server-side from the
+-- server's own stop list; the client only ever receives coords + labels.
+Config.delivery = {
+    item          = 'package', -- one per stop; removed on delivery/route close, no other use
+    minStops      = 3,
+    maxStops      = 5,
+    basePay       = 120,       -- $ per stop
+    payPer100m    = 8,         -- $ per full 100m depot->stop (straight line)
+    maxDistancePay = 800,      -- cap on the distance part of a stop's pay
+    account       = 'bank',
+    deliverDist   = 5.0,       -- stop interaction radius (server re-checks with slack)
+    deliverTime   = 5000,      -- ms progress per hand-over
+    loadTime      = 3000,      -- ms progress loading packages at the depot
+    timeoutMin    = 30,        -- route expires after this many minutes
+}
+
+-- Courier stop pool (script-config defaults; storefronts across city + county). The server picks
+-- minStops..maxStops random entries per route. Tune/extend freely.
+Config.deliveryStops = {
+    { label = 'Innocence Blvd 24/7',    x = 24.47,    y = -1346.62, z = 29.5   },
+    { label = 'Grove Street LTD',       x = -48.02,   y = -1757.51, z = 29.42  },
+    { label = 'Mirror Park LTD',        x = 1163.37,  y = -323.8,   z = 69.21  },
+    { label = 'Little Seoul LTD',       x = -707.5,   y = -914.26,  z = 19.22  },
+    { label = 'Vespucci Robs Liquor',   x = -1222.91, y = -906.98,  z = 12.33  },
+    { label = 'El Rancho Robs Liquor',  x = 1135.81,  y = -982.28,  z = 46.42  },
+    { label = 'Hawick Robs Liquor',     x = -1487.55, y = -379.11,  z = 40.16  },
+    { label = 'Clinton Ave 24/7',       x = 373.55,   y = 325.56,   z = 103.57 },
+    { label = 'Sandy Shores 24/7',      x = 1960.54,  y = 3740.65,  z = 32.34  },
+    { label = 'Grapeseed 24/7',         x = 1697.87,  y = 4924.4,   z = 42.06  },
+    { label = 'Paleto Bay 24/7',        x = 1729.2,   y = 6414.71,  z = 35.04  },
+    { label = 'Route 68 24/7',          x = 549.13,   y = 2671.75,  z = 42.16  },
+    { label = 'Banham Canyon 24/7',     x = -3038.94, y = 585.95,   z = 7.91   },
+    { label = 'Mount Chiliad 24/7',     x = 2678.92,  y = 3280.6,   z = 55.24  },
+    { label = 'Senora Robs Liquor',     x = 1166.02,  y = 2708.93,  z = 38.16  },
+}
+
+-- XP perks (index = level 1..5 in the matching pengu_xp category for that point's ptype).
+-- gatherCooldownMult scales recipe cooldowns; sellBonusPct scales sell payouts (1 + pct);
+-- deliveryBonusPct scales delivery per-stop pay (1 + pct).
+Config.perks = {
+    gatherCooldownMult = { 1.0, 0.95, 0.90, 0.85, 0.80 },
+    sellBonusPct       = { 0, 0.02, 0.04, 0.07, 0.10 },
+    deliveryBonusPct   = { 0, 0.02, 0.04, 0.07, 0.10 },
+}
+
 -- seed points (admin re-places live with /jobloc). ptype is a gather OR sell type key.
 -- seed-on-empty only (admin adds more live with /jobloc add <type>).
 Config.seeds = {
@@ -184,6 +240,7 @@ Config.seeds = {
     { ptype = 'gym',           label = 'Mirror Park Gym',      x = 1219.0,  y = -1405.0, z = 35.0 },
     { ptype = 'grill',         label = 'Grapeseed Campfire',   x = 2440.0, y = 4968.0, z = 46.0 },
     { ptype = 'foodmarket',    label = 'Grapeseed Food Stall', x = 2420.0, y = 4956.0, z = 44.5 },
+    { ptype = 'depot',         label = 'PostOP Depot',         x = -424.44, y = -2789.4, z = 6.0 },
 }
 
 Config.defaultLabel = 'Job Point'
@@ -209,6 +266,7 @@ Config.blips = {
     butcher_market = { sprite = 99,  colour = 2,  name = 'Butcher Market' },
     foodmarket     = { sprite = 52,  colour = 47, name = 'Food Stall' },
     gym            = { sprite = 311, colour = 81, name = 'Gym' },
+    depot          = { sprite = 477, colour = 47, name = 'Delivery Depot' },
 }
 Config.blipDefault = { sprite = 1, colour = 0 }
 
@@ -234,4 +292,5 @@ Config.visuals = {
     butcher_market = { model = 'prop_butch_blk_01',    ped = false },
     foodmarket     = { model = 'prop_food_stall_03',   ped = false },
     gym            = { model = 'prop_gym_bar_01',      ped = false },
+    depot          = { model = 'prop_boxpile_07d',     ped = false }, -- pallet of parcels
 }
