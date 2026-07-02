@@ -47,6 +47,15 @@ Config.sellXP = {
 -- Delivery courier (pengu_jobs depot routes): XP per delivered stop
 Config.deliveryXP = { category = 'delivery', amount = 20 }
 
+-- Fitness carry-weight perk (roadmap 6.1 'more inventory weight').
+-- COUPLING: weightBase MUST equal the 'setr inventory:weight' convar in the
+-- base's ox.cfg (currently 85000 grams). ox_inventory seeds every player
+-- inventory from that convar, so a mismatched base here would silently grow
+-- or shrink everyone's carry capacity on load. Update both together.
+Config.weightPerk            = true   -- master toggle for the perk
+Config.weightBase            = 85000  -- grams; must match ox.cfg inventory:weight
+Config.weightPerFitnessLevel = 1000   -- grams per fitness level above 1 (L5 = +4kg)
+
 -- Daily playtime bonus (gang member, >=1h per day, first time each day)
 Config.playtime = {
     min_seconds = 3600,

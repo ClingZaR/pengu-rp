@@ -17,6 +17,17 @@ local function alertAmbulance(src, text)
 	end
 end
 
+-- PenguRP: MDT medical log hook (pengu_mdt EMS tab). Fire-and-forget server
+-- event, pcall-wrapped so EMS flows never break if pengu_mdt is off/missing.
+-- medicSrc stays numeric; pengu_mdt resolves the medic name server-side.
+local function mdtMedicalLog(patient, medicSrc, action, detail)
+	if not patient or not patient.PlayerData then return end
+	local ci = patient.PlayerData.charinfo or {}
+	local patientName = (('%s %s'):format(ci.firstname or '', ci.lastname or '')):gsub('^%s+', ''):gsub('%s+$', '')
+	pcall(TriggerEvent, 'pengu_mdt:server:medicalLog',
+		patient.PlayerData.citizenid, patientName, medicSrc, action, detail)
+end
+
 local function registerArmory()
 	for _, armory in pairs(sharedConfig.locations.armory) do
 		exports.ox_inventory:RegisterShop(armory.shopType, armory)
@@ -61,6 +72,7 @@ RegisterNetEvent('hospital:server:TreatWounds', function(playerId)
         -- consumed with no effect); qbx_medical:client:heal is the real handler and heals
         -- all wounds when passed 'full' (qbx_medical/client/main.lua)
         TriggerClientEvent('qbx_medical:client:heal', patient.PlayerData.source, 'full')
+        mdtMedicalLog(patient, src, 'treatment', 'bandage') -- PenguRP: MDT medical log
     else
         exports.qbx_core:Notify(src, locale('error.no_bandage'), 'error')
     end
@@ -80,6 +92,7 @@ RegisterNetEvent('hospital:server:RevivePlayer', function(playerId)
 
 	if exports.ox_inventory:RemoveItem(player.PlayerData.source, 'firstaid', 1) then
         TriggerClientEvent('qbx_medical:client:playerRevived', patient.PlayerData.source)
+        mdtMedicalLog(patient, player.PlayerData.source, 'revive', 'firstaid') -- PenguRP: MDT medical log
     else
         exports.qbx_core:Notify(player.PlayerData.source, locale('error.no_firstaid'), 'error')
     end
@@ -122,6 +135,7 @@ RegisterNetEvent('hospital:server:UseMedikit', function(targetId)
 	if not exports.ox_inventory:RemoveItem(src, 'medikit', 1) then return end
 
 	TriggerClientEvent('qbx_medical:client:playerRevived', healTarget)
+	mdtMedicalLog(exports.qbx_core:GetPlayer(healTarget), src, 'revive', 'medikit') -- PenguRP: MDT medical log
 end)
 
 lib.callback.register('qbx_ambulancejob:server:getNumDoctors', function()
@@ -188,7 +202,12 @@ local function triggerItemEventOnPlayer(src, item, event)
 	local removeItem = lib.callback.await(event, src)
 	if not removeItem then return end
 
-	exports.ox_inventory:RemoveItem(src, item.name, 1)
+	-- PenguRP: return-check the removal + log the self-treatment. Only ifaks /
+	-- bandage / painkillers reach here (the firstaid/medikit callbacks return
+	-- nothing; those flows are logged as 'revive' in their own server events).
+	if exports.ox_inventory:RemoveItem(src, item.name, 1) then
+		mdtMedicalLog(player, src, 'treatment', item.name)
+	end
 end
 
 exports.qbx_core:CreateUseableItem('ifaks', function(source, item)

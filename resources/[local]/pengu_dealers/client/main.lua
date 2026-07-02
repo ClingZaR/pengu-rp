@@ -54,6 +54,22 @@ local function dirtyMoney()
     return exports.ox_inventory:Search('count', Config.dirtyItem) or 0
 end
 
+-- PenguRP demand: server-wide demand factor for a drug item (GlobalState.penguDrugDemand,
+-- published rounded by pengu_drugs) mapped to a street-talk hint for the dealer menu.
+local function demandHint(item)
+    local d = GlobalState.penguDrugDemand
+    local f = (type(d) == 'table' and tonumber(d[item])) or 1.0
+    if f >= 1.15 then
+        return 'The streets are HUNGRY for this'
+    elseif f >= 1.0 then
+        return 'Steady demand'
+    elseif f >= 0.8 then
+        return 'Market cooling off'
+    else
+        return 'Market FLOODED'
+    end
+end
+
 -- info rows: every gang's influence on this dealer (x/max), control marker, your gang noted.
 local function standingRows(dealer)
     local info = lib.callback.await('pengu_dealers:getStandings', false, dealer.id)
@@ -98,6 +114,10 @@ local function openSellMenu(dealer, def, cbName, opts)
             desc = opts.wantedOnly and 'None from a currently-wanted car' or 'You have none of these'
         else
             desc = ('$%d each  -  you have %d%s'):format(acc.price or 0, have, opts.wantedOnly and ' sellable' or '')
+        end
+        -- PenguRP demand: append the server-wide market signal on every drug row
+        if opts.demandHints then
+            desc = desc .. '  |  ' .. demandHint(acc.item)
         end
         options[#options + 1] = {
             title       = acc.label or acc.item,
@@ -210,7 +230,7 @@ local function openDealer(dealer)
     local def = Config.dealerTypes[dealer.type]
     if not def then return end
     if     dealer.type == 'mechanic'    then openMechanicMenu(dealer, def)
-    elseif dealer.type == 'drug_dealer' then openSellMenu(dealer, def, 'pengu_dealers:sellDrugs', { header = standingRows(dealer) })
+    elseif dealer.type == 'drug_dealer' then openSellMenu(dealer, def, 'pengu_dealers:sellDrugs', { header = standingRows(dealer), demandHints = true }) -- PenguRP demand hints
     elseif dealer.type == 'weapons'     then openWeaponsMenu(dealer, def)
     elseif def.sells                    then openSellsMenu(dealer, def) -- doctor / armor / general
     end

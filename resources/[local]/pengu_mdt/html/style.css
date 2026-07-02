@@ -676,6 +676,24 @@ html, body{
 #app.role-court .leo-only{ display:none !important; }
 
 /* ============================================================
+   EMS ROLE (job 'ambulance') - Medical tab ONLY. Two-way privacy:
+   LEO/court never see anything marked .ems-only (the Medical rail
+   tab + panel), and role-ems hides EVERY other rail tab plus all
+   .leo-only elements. The server enforces the same restrictions
+   on every callback (getEms vs getOfficer/getMdtUser).
+   ============================================================ */
+#app:not(.role-ems) .ems-only{ display:none !important; }
+#app.role-ems .rail-btn:not(.ems-only){ display:none !important; }
+#app.role-ems .tab-panel:not([data-tab="medical"]){ display:none !important; }
+#app.role-ems .leo-only{ display:none !important; }
+
+/* Medical tab (EMS) - action badges + recent activity list */
+.badge.revive{ color:var(--green); background:rgba(124,255,160,.12); border:1px solid var(--green); }
+.badge.treatment{ color:var(--citation); background:rgba(91,170,255,.15); border:1px solid var(--citation); }
+.med-recent{ margin-top:16px; }
+.med-recent-list{ padding:12px; max-height:420px; overflow-y:auto; }
+
+/* ============================================================
    BODYCAM REC indicator (persists outside the panel)
    ============================================================ */
 .bodycam-rec{

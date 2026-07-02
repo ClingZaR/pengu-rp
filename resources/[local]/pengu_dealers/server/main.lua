@@ -257,6 +257,10 @@ lib.callback.register('pengu_dealers:sellDrugs', function(src, dealerId, item)
         if acc.item == item then price = acc.price; break end
     end
     if not price then return false end
+    -- PenguRP demand: scale the fixed unit price by the server-wide demand factor (pengu_drugs
+    -- owns the model; item name IS the demand key; 1.0 when unavailable; never below $1/unit).
+    local demandOk, demand = pcall(function() return exports.pengu_drugs:GetDemand(item) end)
+    price = math.max(1, math.floor(price * ((demandOk and tonumber(demand)) or 1.0) + 0.5))
     busy[src] = true
     local result = false
     pcall(function()
@@ -268,6 +272,8 @@ lib.callback.register('pengu_dealers:sellDrugs', function(src, dealerId, item)
         end
         if not ox:RemoveItem(src, item, count) then return end
         ox:AddItem(src, Config.dirtyItem, count * price)
+        -- PenguRP demand: report the completed sale - each unit sold softens this drug's demand
+        pcall(function() exports.pengu_drugs:RecordDrugSale(item, count) end)
         -- bonus criminal XP on top of the drug XP
         pcall(function() exports.pengu_xp:Award(src, 'criminal', 50) end)
         rewardInteraction(src, d.id, def)

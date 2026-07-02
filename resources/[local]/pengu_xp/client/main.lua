@@ -35,7 +35,7 @@ local function getPerks()
 end
 
 local function perkLine(key, level, perks)
-    if not perks then return nil end
+    perks = perks or {} -- fitness weight row below works without pengu_jobs
     local bits = {}
     local cd = perks.gatherCooldownMult
     if gatherCats[key] and type(cd) == 'table' and #cd > 0 then
@@ -51,6 +51,12 @@ local function perkLine(key, level, perks)
     if key == (Config.deliveryXP and Config.deliveryXP.category) and type(dv) == 'table' and #dv > 0 then
         local i = math.min(level, #dv)
         bits[#bits + 1] = ('+%d%% delivery pay'):format(math.floor((dv[i] or 0) * 100 + 0.5))
+    end
+    -- fitness carry-weight perk: mirrors pengu_xp shared config, same math the
+    -- server applies via ox_inventory SetMaxWeight (see server applyWeightPerk)
+    if key == 'fitness' and Config.weightPerk and type(Config.weightPerFitnessLevel) == 'number' then
+        local kg = Config.weightPerFitnessLevel * (level - 1) / 1000
+        bits[#bits + 1] = ('+%dkg carry weight'):format(math.floor(kg + 0.5))
     end
     if #bits == 0 then return nil end
     return ('Level %d: %s'):format(level, table.concat(bits, ', '))

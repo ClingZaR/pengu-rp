@@ -14,16 +14,20 @@
      getWarrants {}                          -> { items:[{name,charges,months,fine,wanted}] }
      getCameras {}                           -> { feeds:[{id,label}] }
      getBodycam {}                           -> { items:[{id,officer,captured_at,image}] }
+     searchMedical {name}                    -> { found,name,items:[{action,detail,medic,created_at}] }  (EMS only)
+     getRecentMedical {}                     -> { items:[{patient,action,detail,medic,created_at}] }     (EMS only)
    Client-only callbacks:
      closeMdt, viewCamera {id}, exitCamera {},
      toggleBodycam {} -> {on}  (real captures: the client snaps a frame via
      screenshot-basic on toggle + every 60s, we downscale it here and hand it
      back via bodycamProcessed)
-   Messages: {action:'open', role:'leo'|'court'} {action:'close'}
+   Messages: {action:'open', role:'leo'|'court'|'ems'} {action:'close'}
    Roles: 'court' (judge/lawyer) is read-only - the Arrest Calculator and
    Units tabs, BOLO create form and every action button are hidden (CSS
-   .role-court .leo-only). The server enforces the same role on every
-   callback, so hiding here is presentation only.
+   .role-court .leo-only). 'ems' (on-duty ambulance) sees ONLY the Medical
+   tab (CSS .role-ems hides every other rail tab; .ems-only hides Medical
+   from leo/court - medical privacy). The server enforces the same role on
+   every callback, so hiding here is presentation only.
    ============================================================ */
 (function () {
   'use strict';
@@ -43,7 +47,7 @@
     activeCam: null,          // { id, label }
     feeds: [],                // [{id,label}] from loadCameras (for prev/next)
     bodycam: false,
-    role: 'leo',              // 'leo' | 'court' (court = judge/lawyer, read-only)
+    role: 'leo',              // 'leo' | 'court' (read-only) | 'ems' (Medical tab only)
     loadingPenal: false,
     loaded: { dashboard: false, bolos: false, warrants: false, cameras: false, bodycam: false },
     lightbox: { images: [], index: 0 }    // images of the BOLO currently in the viewer
@@ -165,19 +169,28 @@
   // Open / close
   // ------------------------------------------------------------------
   function openMdt(plate, role) {
-    const newRole = (role === 'court') ? 'court' : 'leo';
+    const newRole = (role === 'court' || role === 'ems') ? role : 'leo';
     if (state.role !== newRole) {
       // role changed since last open (job change) -> stale caches must reload
       state.loaded = { dashboard: false, bolos: false, warrants: false, cameras: false, bodycam: false };
     }
     state.role = newRole;
     app.classList.toggle('role-court', newRole === 'court');
+    app.classList.toggle('role-ems', newRole === 'ems');
     app.classList.remove('hidden');
-    loadPenalCode();            // static; needed by calculator + modifier labels
-    if (newRole === 'court') {
-      showTab('person');        // court landing tab (Units is LEO-only)
+    if (newRole === 'ems') {
+      showTab('medical');       // ems landing (and only) tab - no penal code needed
     } else {
-      loadDashboard(true);      // landing tab
+      loadPenalCode();          // static; needed by calculator + modifier labels
+      if (newRole === 'court') {
+        showTab('person');      // court landing tab (Units is LEO-only)
+      } else {
+        // leo keeps its last tab across opens - unless the role just changed
+        // away from ems and the ems-only Medical tab is still active
+        const active = $('.tab-panel.active');
+        if (active && active.dataset.tab === 'medical') showTab('dashboard');
+        loadDashboard(true);    // landing tab
+      }
     }
     if (plate) {                // radar HUD: jump to the vehicle tab + run the plate
       showTab('vehicle');
@@ -287,6 +300,8 @@
   const COURT_BLOCKED_TABS = { dashboard: true, calculator: true };
 
   function showTab(tab) {
+    if (state.role === 'ems') tab = 'medical';       // ems sees ONLY Medical
+    else if (tab === 'medical') tab = 'person';      // Medical is ems-only (privacy)
     if (state.role === 'court' && COURT_BLOCKED_TABS[tab]) tab = 'person';
     $$('.rail-btn').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
     $$('.tab-panel').forEach((p) => p.classList.toggle('active', p.dataset.tab === tab));
@@ -295,6 +310,7 @@
     else if (tab === 'calculator') loadPenalCode();
     else if (tab === 'bolos' && !state.loaded.bolos) loadBolos();
     else if (tab === 'warrants') loadWarrants();   // auto-refresh every open
+    else if (tab === 'medical') loadRecentMedical();  // auto-refresh every open
     else if (tab === 'cameras') {
       // live feeds are LEO-only (hidden + denied for court); the bodycam
       // archive loads for both roles
@@ -1069,6 +1085,99 @@
   }
 
   // ------------------------------------------------------------------
+  // Medical (EMS role only; the server rejects everyone else). Patient
+  // history by NAME + the newest-30 recent activity feed. NO citizen ids.
+  // ------------------------------------------------------------------
+  function medBadge(action) {
+    const key = String(action || '').toLowerCase() === 'revive' ? 'revive' : 'treatment';
+    const label = key === 'revive' ? 'Revive' : 'Treatment';
+    return `<span class="badge ${key}">${label}</span>`;
+  }
+
+  async function searchMedical() {
+    const name = $('#med-patient-name').value.trim();
+    if (!name) { toast('Enter a patient name to search.', 'warn'); return; }
+    $('#med-empty').classList.add('hidden');
+    $('#med-results').classList.add('hidden');
+    setBusy('#med-search-btn', true);
+    const stop = searchLoading($('#med-body'));
+    const data = await nui('searchMedical', { name });
+    stop();
+    setBusy('#med-search-btn', false);
+    renderMedical(data);
+  }
+
+  function renderMedical(data) {
+    const empty = $('#med-empty');
+    const results = $('#med-results');
+    if (!data || !data.found) {
+      results.classList.add('hidden');
+      empty.classList.remove('hidden');
+      empty.innerHTML = data
+        ? emptyHTML(ICON.units, 'No patient found', 'No record matches that name.')
+        : emptyHTML(ICON.units, 'Search unavailable', 'Are you on duty as EMS?');
+      return;
+    }
+    empty.classList.add('hidden');
+    results.classList.remove('hidden');
+    $('#med-patient').textContent = data.name || '-';
+    const items = Array.isArray(data.items) ? data.items : [];
+    $('#med-hist-count').textContent = String(items.length);
+    const body = $('#med-history-body');
+    if (!items.length) {
+      body.innerHTML = `<tr class="empty-row"><td colspan="4">No incident history on file.</td></tr>`;
+      return;
+    }
+    const frag = document.createDocumentFragment();
+    items.forEach((r) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        `<td>${medBadge(r.action)}</td>` +
+        `<td>${escapeHtml(r.detail || '-')}</td>` +
+        `<td>${escapeHtml(r.medic || 'Unknown')}</td>` +
+        `<td class="mono">${escapeHtml(r.created_at || '-')}</td>`;
+      frag.appendChild(tr);
+    });
+    body.innerHTML = '';
+    body.appendChild(frag);
+  }
+
+  async function loadRecentMedical() {
+    const list = $('#med-recent-list');
+    if (!list) return;
+    const stop = delayedSpinner(list, 'Loading activity...');
+    const data = await nui('getRecentMedical', {});
+    stop();
+    const items = (data && Array.isArray(data.items)) ? data.items : [];
+    const count = $('#med-recent-count');
+    if (count) count.textContent = String(items.length);
+    if (!items.length) {
+      list.innerHTML = emptyHTML(ICON.file, 'No recent activity',
+        'Revives and treatments are logged here as they happen.');
+      return;
+    }
+    const frag = document.createDocumentFragment();
+    items.forEach((r) => {
+      const row = document.createElement('div');
+      row.className = 'list-row click';
+      row.innerHTML =
+        `<div class="list-main">` +
+          `<div class="list-top"><span class="list-title">${escapeHtml(r.patient || 'Unknown')}</span>${medBadge(r.action)}</div>` +
+          `<div class="list-meta">${escapeHtml(r.detail || '-')} - by ${escapeHtml(r.medic || 'Unknown')}</div>` +
+        `</div>` +
+        `<span class="pill"><span class="pv tnum">${escapeHtml(r.created_at || '-')}</span></span>`;
+      // click -> open that patient's full history in the search above
+      row.addEventListener('click', () => {
+        $('#med-patient-name').value = r.patient || '';
+        searchMedical();
+      });
+      frag.appendChild(row);
+    });
+    list.innerHTML = '';
+    list.appendChild(frag);
+  }
+
+  // ------------------------------------------------------------------
   // Cameras
   // ------------------------------------------------------------------
   async function loadCameras() {
@@ -1327,6 +1436,11 @@
     // buttons to wire. Bodycam toggle + archive refresh remain.
     $('#bodycam-btn').addEventListener('click', toggleBodycam);
     $('#bodycam-archive-refresh').addEventListener('click', loadBodycam);
+
+    // Medical (EMS role only; the tab is hidden for everyone else)
+    $('#med-search-btn').addEventListener('click', searchMedical);
+    $('#med-patient-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') searchMedical(); });
+    $('#med-recent-refresh').addEventListener('click', loadRecentMedical);
 
     renderCart();
     recompute();

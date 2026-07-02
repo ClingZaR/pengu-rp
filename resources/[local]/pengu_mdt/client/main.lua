@@ -4,8 +4,9 @@
 
     Responsibilities:
       - /mdt command + F11 keybind -> open the NUI for LEO
-        (PlayerData.job.type == 'leo' covers police/bcso/sasp) AND for court
-        (job.name 'judge'/'lawyer' -> restricted read-only role; the server
+        (PlayerData.job.type == 'leo' covers police/bcso/sasp), for court
+        (job.name 'judge'/'lawyer' -> restricted read-only role) AND for ems
+        (job.name 'ambulance' on duty -> Medical tab only; the server
         re-checks the role on every callback).
       - Relay every NUI data fetch to the authoritative server callbacks
         via lib.callback.await('pengu_mdt:<name>', ...).
@@ -287,12 +288,14 @@ end
 -- MDT role for the local player:
 --   'leo'   = ON-DUTY LEO (off-duty officers cannot open the MDT)
 --   'court' = judge/lawyer -> restricted read-only role (server re-checks)
+--   'ems'   = ON-DUTY ambulance -> Medical tab ONLY (server re-checks)
 --   nil     = no access
 local function mdtRole()
     local data = exports.qbx_core:GetPlayerData()
     if data == nil or data.job == nil then return nil end
     if data.job.type == 'leo' and data.job.onduty == true then return 'leo' end
     if data.job.name == 'judge' or data.job.name == 'lawyer' then return 'court' end
+    if data.job.name == 'ambulance' and data.job.onduty == true then return 'ems' end
     return nil
 end
 
@@ -320,8 +323,9 @@ local function openMdt()
     isOpen = true
     SetNuiFocus(true, true)
     -- role drives the NUI: 'court' hides the Arrest Calculator, BOLO create
-    -- form and every action button. The server enforces the same role on
-    -- every callback, so this is presentation only.
+    -- form and every action button; 'ems' sees ONLY the Medical tab. The
+    -- server enforces the same role on every callback, so this is
+    -- presentation only.
     SendNUIMessage({ action = 'open', role = role })
 end
 
@@ -427,6 +431,7 @@ local RELAY_CALLBACKS = {
     'getReports', 'getReport', 'createReport',
     'getCameras', 'getBodycam',
     'setWanted',
+    'searchMedical', 'getRecentMedical', -- EMS Medical tab (ems role only)
 }
 
 for _, name in ipairs(RELAY_CALLBACKS) do

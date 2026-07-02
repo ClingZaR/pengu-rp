@@ -18,6 +18,9 @@
       LEO + court (getMdtUser; judge/lawyer read-only): searchVehicle,
         searchPerson, getPenalCode, getWarrants (derived, online-only),
         getReports, getReport, getBodycam
+      EMS-only (getEms; on-duty job 'ambulance'): searchMedical,
+        getRecentMedical. EMS gets NOTHING else, and LEO/court get NO
+        medical data (medical privacy) - see pengu_mdt_medical below.
 
     WANTED LEVEL (0-5, pengu_mdt_wanted): auto-derived on placeCharges, cleared
     by /jail, manual via /wanted, /unwanted + the setWanted MDT action, offline
@@ -191,6 +194,22 @@ CREATE TABLE IF NOT EXISTS pengu_mdt_wanted (
   level TINYINT NOT NULL DEFAULT 1,
   reason VARCHAR(255) DEFAULT '',
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+)
+]]
+
+-- EMS medical log (revives + treatment item uses). Written ONLY via the
+-- server-only 'pengu_mdt:server:medicalLog' event (qbx_ambulancejob hooks);
+-- pruned to the newest 500 rows TOTAL on every insert.
+local CREATE_MEDICAL_SQL = [[
+CREATE TABLE IF NOT EXISTS pengu_mdt_medical (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  citizenid VARCHAR(64) NOT NULL,
+  patient_name VARCHAR(128) DEFAULT '',
+  medic_name VARCHAR(128) DEFAULT '',
+  action VARCHAR(32) NOT NULL,
+  detail VARCHAR(128) DEFAULT '',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_medical_cid (citizenid)
 )
 ]]
 
@@ -399,6 +418,40 @@ local WANTED_HIGH_SQL = [[
 SELECT citizenid, level, reason FROM pengu_mdt_wanted WHERE level >= 3
 ]]
 
+-- Medical log (EMS tab): per-patient history + the newest-30 activity feed.
+local MEDICAL_INSERT_SQL = [[
+INSERT INTO pengu_mdt_medical (citizenid, patient_name, medic_name, action, detail)
+VALUES (?, ?, ?, ?, ?)
+]]
+
+-- Prune to the newest 500 rows TOTAL (same derived-table wrapper as bodycam
+-- so MySQL/MariaDB allows deleting from the table being selected).
+local MEDICAL_PRUNE_SQL = [[
+DELETE FROM pengu_mdt_medical
+WHERE id NOT IN (
+  SELECT id FROM (
+    SELECT id FROM pengu_mdt_medical ORDER BY id DESC LIMIT 500
+  ) keep_newest
+)
+]]
+
+local MEDICAL_FOR_PERSON_SQL = [[
+SELECT action, detail, medic_name,
+  DATE_FORMAT(created_at,'%Y-%m-%d %H:%i') AS created_at
+FROM pengu_mdt_medical
+WHERE citizenid = ?
+ORDER BY id DESC
+LIMIT 60
+]]
+
+local MEDICAL_RECENT_SQL = [[
+SELECT patient_name, action, detail, medic_name,
+  DATE_FORMAT(created_at,'%Y-%m-%d %H:%i') AS created_at
+FROM pengu_mdt_medical
+ORDER BY id DESC
+LIMIT 30
+]]
+
 -- Outstanding charge severity for the derived (automatic) wanted level.
 local WANTED_SEVERITY_SQL = [[
 SELECT
@@ -460,6 +513,19 @@ end
 -- Shared read-only gate: on-duty LEO OR court (judge/lawyer).
 local function getMdtUser(source)
     return getOfficer(source) or isCourt(source)
+end
+
+-- EMS access: ON-DUTY 'ambulance' job ONLY (qbx_core/shared/jobs.lua). EMS
+-- users get the two Medical callbacks and NOTHING else; every LEO/court
+-- callback keeps its getOfficer/getMdtUser gate, which already rejects ems
+-- (job.type 'ems' is not 'leo' and 'ambulance' is not judge/lawyer). And
+-- getEms rejects LEO/court in turn - medical data is EMS-only (privacy).
+local function getEms(source)
+    local player = exports.qbx_core:GetPlayer(source)
+    if not player or not player.PlayerData then return nil end
+    local job = player.PlayerData.job
+    if not job or job.name ~= 'ambulance' or not job.onduty then return nil end
+    return player
 end
 
 -- Build a "First Last" display name from a charinfo table.
@@ -1024,6 +1090,50 @@ local function handleSetWanted(source, data)
     }
 end
 
+-- searchMedical {name} -> { found, name, items:[{action,detail,medic,created_at}] }
+-- EMS ONLY (LEO/court are rejected - medical privacy). BY NAME: the citizenid
+-- is resolved internally and never returned to the NUI.
+local function handleSearchMedical(source, data)
+    if not getEms(source) then return { found = false } end
+
+    local name = data and data.name
+    if type(name) ~= 'string' or name == '' then return { found = false } end
+
+    local q = '%' .. name .. '%'
+    local row = MySQL.single.await(PERSON_SQL, { q, q, q, q, q })
+    if not row then return { found = false } end
+
+    local rows = MySQL.query.await(MEDICAL_FOR_PERSON_SQL, { row.cid }) or {}
+    local items = {}
+    for _, r in ipairs(rows) do
+        items[#items + 1] = {
+            action = r.action,
+            detail = r.detail or '',
+            medic = r.medic_name or 'Unknown',
+            created_at = r.created_at,
+        }
+    end
+    return { found = true, name = row.name, items = items }
+end
+
+-- getRecentMedical {} -> { items:[{patient,action,detail,medic,created_at}] }
+-- Newest 30 log rows across all patients. EMS ONLY.
+local function handleGetRecentMedical(source)
+    if not getEms(source) then return { items = {} } end
+    local rows = MySQL.query.await(MEDICAL_RECENT_SQL, {}) or {}
+    local items = {}
+    for _, r in ipairs(rows) do
+        items[#items + 1] = {
+            patient = r.patient_name or 'Unknown',
+            action = r.action,
+            detail = r.detail or '',
+            medic = r.medic_name or 'Unknown',
+            created_at = r.created_at,
+        }
+    end
+    return { items = items }
+end
+
 ----------------------------------------------------------------------
 -- Register callbacks (both naming conventions for client compatibility)
 ----------------------------------------------------------------------
@@ -1044,6 +1154,8 @@ local handlers = {
     getCameras    = handleGetCameras,
     getBodycam    = handleGetBodycam,
     setWanted     = handleSetWanted,
+    searchMedical    = handleSearchMedical,    -- EMS only
+    getRecentMedical = handleGetRecentMedical, -- EMS only
 }
 
 for name, fn in pairs(handlers) do
@@ -1127,6 +1239,40 @@ end)
 
 AddEventHandler('playerDropped', function()
     bodycamLast[source] = nil
+end)
+
+----------------------------------------------------------------------
+-- EMS medical log intake. qbx_ambulancejob fires this SERVER event (pcall-
+-- wrapped there) when a revive completes or a treatment item is used
+-- successfully. AddEventHandler - NOT RegisterNetEvent - on purpose: only
+-- server resources can trigger it, so a client can never inject fake rows.
+-- medicSrcOrName: numeric player source (medic name resolved here) or an
+-- already-resolved name string.
+----------------------------------------------------------------------
+
+local MEDICAL_ACTIONS = { revive = true, treatment = true }
+
+AddEventHandler('pengu_mdt:server:medicalLog', function(citizenid, patientName, medicSrcOrName, action, detail)
+    if type(citizenid) ~= 'string' or citizenid == '' or #citizenid > 64 then return end
+    if type(action) ~= 'string' or not MEDICAL_ACTIONS[action] then return end
+    if type(patientName) ~= 'string' or patientName == '' then patientName = 'Unknown' end
+    if type(detail) ~= 'string' then detail = '' end
+
+    local medicName = 'Unknown'
+    if type(medicSrcOrName) == 'number' then
+        local medic = exports.qbx_core:GetPlayer(medicSrcOrName)
+        if medic and medic.PlayerData then
+            medicName = fullName(medic.PlayerData.charinfo)
+        end
+    elseif type(medicSrcOrName) == 'string' and medicSrcOrName ~= '' then
+        medicName = medicSrcOrName
+    end
+
+    MySQL.insert.await(MEDICAL_INSERT_SQL, {
+        citizenid, patientName:sub(1, 128), medicName:sub(1, 128),
+        action, detail:sub(1, 128),
+    })
+    MySQL.query.await(MEDICAL_PRUNE_SQL)
 end)
 
 ----------------------------------------------------------------------
@@ -1540,6 +1686,7 @@ CreateThread(function()
     MySQL.query.await(CREATE_PRINTS_SQL)
     MySQL.query.await(CREATE_BODYCAM_SQL)
     MySQL.query.await(CREATE_WANTED_SQL)
+    MySQL.query.await(CREATE_MEDICAL_SQL)
 
     -- Idempotent migrations for pre-existing installs.
     ensureColumn('pengu_mdt_charges', 'status', "VARCHAR(16) DEFAULT 'outstanding'")

@@ -10,6 +10,18 @@ Config = {}
 
 Config.interactDist = 3.0   -- client interaction radius (wider so a lab table at the point never blocks reach); the server re-checks this (+slack) on every process
 
+-- ===================== server-wide drug demand (server/demand.lua) =====================
+-- One demand factor per sellable drug (union of the qbx_drugs corner-sell list + the
+-- pengu_dealers drug_dealer 'accepts' items). Sellers multiply their rolled/base price by it.
+-- Factors clamp to demandMin..demandMax; each unit sold drops that drug by demandDropPerUnit
+-- and lifts every OTHER drug by a quarter of it (substitution); every demandRegenMs all factors
+-- regress toward 1.0 by demandRegen. Published 2dp as GlobalState.penguDrugDemand (menu hints).
+Config.demandDropPerUnit = 0.004   -- demand lost by drug X per unit of X sold
+Config.demandRegen       = 0.02    -- regression toward 1.0 per regen tick
+Config.demandRegenMs     = 600000  -- regen tick interval (10 min)
+Config.demandMin         = 0.55    -- demand floor (market flooded)
+Config.demandMax         = 1.45    -- demand ceiling (streets are starving)
+
 -- ===================== lab types =====================
 -- Each type: label, marker colour, ox_target icon, and a list of recipes. A recipe converts INPUT
 -- items -> OUTPUT items behind a skill-check gate. All items must already exist in ox_inventory.

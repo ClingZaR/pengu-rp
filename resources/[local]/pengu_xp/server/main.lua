@@ -64,6 +64,50 @@ local function saveXP(citizenid, category, newXP)
     ]], { citizenid, category, newXP })
 end
 
+-- ===================== fitness carry-weight perk =====================
+-- maxWeight = weightBase + weightPerFitnessLevel * (fitnessLevel - 1), applied
+-- through ox_inventory's SetMaxWeight export (modules/inventory/server.lua,
+-- signature SetMaxWeight(inv, maxWeight)). Config.weightBase is coupled to the
+-- inventory:weight convar in ox.cfg - see shared/config.lua for the warning.
+local function fitnessWeight(level)
+    local cat = Config.categories.fitness
+    if not cat then return nil end
+    if type(level) ~= 'number' or level < 1 then level = 1 end
+    if level > #cat.thresholds then level = #cat.thresholds end
+    return Config.weightBase + Config.weightPerFitnessLevel * (level - 1)
+end
+
+local function applyWeightPerk(src, level)
+    if not Config.weightPerk then return end
+    local newWeight = fitnessWeight(level)
+    -- guard rail: never shrink a player below the configured base weight
+    if not newWeight or newWeight < Config.weightBase then return end
+    pcall(function()
+        exports.ox_inventory:SetMaxWeight(src, newWeight)
+    end)
+end
+
+-- On login the qbx bridge builds the ox inventory only after the client sets
+-- the loadInventory statebag, which can land AFTER PlayerLoaded + our DB read;
+-- SetMaxWeight silently no-ops on a missing inventory, so retry briefly until
+-- it exists. Fully pcall-guarded: never throws during player load.
+local function applyWeightPerkOnLoad(src, cid, level)
+    if not Config.weightPerk then return end
+    local attempts = 0
+    local function try()
+        attempts = attempts + 1
+        local p = qbx:GetPlayer(src)
+        if not p or p.PlayerData.citizenid ~= cid then return end -- left / swapped
+        local ok, inv = pcall(function() return exports.ox_inventory:GetInventory(src) end)
+        if ok and inv then
+            applyWeightPerk(src, level)
+        elseif attempts < 10 then
+            SetTimeout(1000, try)
+        end
+    end
+    try()
+end
+
 -- ===================== core Award export =====================
 exports('Award', function(src, category, amount)
     local p = qbx:GetPlayer(src)
@@ -88,6 +132,10 @@ exports('Award', function(src, category, amount)
             ('%s Level Up!'):format(cat.label),
             ('Reached level %d in %s.'):format(newLvl, cat.label),
             'success', 8000)
+        -- re-apply carry-weight perk only on fitness level-ups
+        if category == 'fitness' then
+            applyWeightPerk(src, newLvl)
+        end
     end
 end)
 
@@ -136,8 +184,15 @@ AddEventHandler('QBCore:Server:PlayerLoaded', function()
     joinTimes[src] = os.time()
     local p = qbx:GetPlayer(src)
     if p then
-        loadXP(p.PlayerData.citizenid, function(data)
-            pushXP(src, p.PlayerData.citizenid)
+        local cid = p.PlayerData.citizenid
+        loadXP(cid, function(data)
+            pushXP(src, cid)
+            -- fitness carry-weight perk on load (retries until inv exists)
+            local cat = Config.categories.fitness
+            if cat then
+                applyWeightPerkOnLoad(src, cid,
+                    calcLevel((data and data.fitness) or 0, cat.thresholds))
+            end
         end)
     end
 end)
