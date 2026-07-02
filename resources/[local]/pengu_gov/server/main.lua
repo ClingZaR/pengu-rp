@@ -1,11 +1,20 @@
 -- PenguRP Government (pengu_gov) - SERVER.
 -- Owns: pengu_gov_settings / pengu_elections / pengu_election_voters tables, the election
--- lifecycle (/election open|close|status, /runformayor, /vote) and the mayor powers
--- (/settaxrate, /mayorpardon, /mayorannounce). Everything is server-authoritative: the ace
--- gate, the mayor citizenid check, one-vote-per-citizen (DB primary key) and all money flows
--- (return-checked, refunded on failure, per-player busy lock) are enforced HERE - the client
--- only renders the ballot menu. Replication contracts other resources read:
+-- lifecycle (/election open|close|status, /runformayor, /runforcouncil, /vote, /council)
+-- and the mayor powers (/settaxrate, /mayorpardon, /mayorannounce). Everything is
+-- server-authoritative: the ace gate, the mayor citizenid check, one-vote-per-citizen (DB
+-- primary key) and all money flows (return-checked, refunded on failure, per-player busy
+-- lock) are enforced HERE - the client only renders the ballot menu.
+-- Money hardening: this server's qbx dontAllowMinus covers 'cash' ONLY, so
+-- RemoveMoney('bank', ...) NEVER fails - it drives the account negative and returns true.
+-- Every fee therefore has an explicit GetMoney('bank') >= fee precheck; the RemoveMoney
+-- return check is kept only as a second line of defense.
+-- Offices: 'mayor' seats one winner; 'council' seats the top Config.councilSeats
+-- vote-getters as an ADVISORY council (no mechanical powers). Same tables, same flow -
+-- the pengu_elections `office` column separates the races.
+-- Replication contracts other resources read:
 --   GlobalState.penguMayor   = { cid, name }  (nil while the office is vacant)
+--   GlobalState.penguCouncil = array of member names (nil while no council is seated)
 --   GlobalState.penguTaxRate = fraction (e.g. 0.05) - pengu_finance reads this, 0.05 default
 -- ASCII only. luac clean.
 
@@ -84,6 +93,7 @@ end
 
 -- ---------- state ----------
 local MAYOR = { cid = nil, name = nil }
+local COUNCIL = { cids = {}, names = {} } -- advisory council (top councilSeats vote-getters)
 local ELECTION = nil -- { raceId, office, candidates = { {rowId,cid,name,votes}... }, byCid = {} }
 local busy = {}      -- src -> true (one money/vote flow at a time per player)
 local lastAnnounce = 0
@@ -96,15 +106,39 @@ local function publishMayor()
     end
 end
 
+local function publishCouncil()
+    if #COUNCIL.names > 0 then
+        local names = {}
+        for i = 1, #COUNCIL.names do names[i] = tostring(COUNCIL.names[i]) end
+        GlobalState.penguCouncil = names
+    else
+        GlobalState.penguCouncil = nil
+    end
+end
+
+-- per-office registration fee (both fees are balance-prechecked before RemoveMoney)
+local function officeFee(office)
+    return office == 'council' and Config.councilFee or Config.registrationFee
+end
+
+-- the register command players are pointed at in announcements
+local function officeRegisterCmd(office)
+    return office == 'council' and '/runforcouncil' or '/runformayor'
+end
+
 -- ---------- boot: tables + resume persisted state ----------
 CreateThread(function()
     local ok, err = pcall(function()
         MySQL.query.await([[
             CREATE TABLE IF NOT EXISTS pengu_gov_settings (
                 k VARCHAR(48)  NOT NULL PRIMARY KEY,
-                v VARCHAR(128) NOT NULL
+                v VARCHAR(512) NOT NULL
             )
         ]])
+        -- council_cids/council_names are JSON arrays (3 names can exceed the original 128
+        -- chars). Widening is non-destructive and idempotent; guarded so a denied ALTER
+        -- privilege cannot fail the whole boot.
+        pcall(MySQL.query.await, 'ALTER TABLE pengu_gov_settings MODIFY v VARCHAR(512) NOT NULL')
         MySQL.query.await([[
             CREATE TABLE IF NOT EXISTS pengu_elections (
                 id             INT         NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -130,16 +164,31 @@ CreateThread(function()
             MAYOR.name = getSetting('mayor_name') or 'Unknown'
         end
 
+        -- resume the seated council (JSON arrays; corrupt/legacy values are ignored)
+        local cjson = getSetting('council_cids')
+        local njson = getSetting('council_names')
+        if cjson and cjson ~= '' and njson and njson ~= '' then
+            local okC, cids  = pcall(json.decode, cjson)
+            local okN, names = pcall(json.decode, njson)
+            if okC and okN and type(cids) == 'table' and type(names) == 'table' and #names > 0 then
+                COUNCIL.cids, COUNCIL.names = cids, names
+            end
+        end
+
         local tax = tonumber(getSetting('tax_rate'))
         if tax then GlobalState.penguTaxRate = tax / 100 end
 
-        -- resume an election that was open when the server last stopped
+        -- resume an election that was open when the server last stopped. The office of the
+        -- open race is persisted separately; races opened before the council update have no
+        -- office key and are mayoral by definition.
         local openId = tonumber(getSetting('election_open_mayor')) or 0
         if openId > 0 then
+            local office = getSetting('election_open_office')
+            if not office or not Config.offices[office] then office = 'mayor' end
             local rows = MySQL.query.await(
                 'SELECT id, candidate_cid, candidate_name, votes FROM pengu_elections WHERE office = ? AND status = ? ORDER BY id ASC',
-                { 'mayor', 'open' }) or {}
-            ELECTION = { raceId = openId, office = 'mayor', candidates = {}, byCid = {} }
+                { office, 'open' }) or {}
+            ELECTION = { raceId = openId, office = office, candidates = {}, byCid = {} }
             for _, r in ipairs(rows) do
                 local c = { rowId = r.id, cid = r.candidate_cid, name = r.candidate_name, votes = tonumber(r.votes) or 0 }
                 ELECTION.candidates[#ELECTION.candidates + 1] = c
@@ -152,6 +201,7 @@ CreateThread(function()
     end)
     if not ok then print('[pengu_gov] BOOT FAILED: ' .. tostring(err)) end
     publishMayor()
+    publishCouncil()
     print('[pengu_gov] ready.')
 end)
 
@@ -162,14 +212,17 @@ local function openElection(src, office)
         return
     end
     local seq = (tonumber(getSetting('election_seq')) or 0) + 1
-    if not setSetting('election_seq', seq) or not setSetting('election_open_mayor', seq) then
+    -- the office key is written BEFORE the open flag so a half-written open race can never
+    -- resume under the wrong office
+    if not setSetting('election_seq', seq) or not setSetting('election_open_office', office)
+        or not setSetting('election_open_mayor', seq) then
         notify(src, 'Database error - election not opened.', 'error')
         return
     end
     ELECTION = { raceId = seq, office = office, candidates = {}, byCid = {} }
     announce('ELECTION',
-        ('The polls are OPEN for %s of Los Santos! Register with /runformayor ($%d fee, %d slots) and vote with /vote.')
-        :format(Config.offices[office], Config.registrationFee, Config.maxCandidates))
+        ('The polls are OPEN for %s of Los Santos! Register with %s ($%d fee, %d slots) and vote with /vote.')
+        :format(Config.offices[office], officeRegisterCmd(office), officeFee(office), Config.maxCandidates))
     notify(src, ('Election #%d (%s) opened.'):format(seq, office), 'success')
 end
 
@@ -179,16 +232,33 @@ local function closeElection(src)
         return
     end
     local race = ELECTION
-    -- winner straight from the DB (most votes; ties broken by earliest registration)
-    local winner
+    -- winners straight from the DB (most votes; ties broken by earliest registration).
+    -- mayor seats ONE winner; council seats the TOP Config.councilSeats vote-getters.
+    local winner, seated
     local ok, err = pcall(function()
-        winner = MySQL.single.await(
-            'SELECT candidate_cid, candidate_name, votes FROM pengu_elections WHERE office = ? AND status = ? ORDER BY votes DESC, id ASC LIMIT 1',
-            { race.office, 'open' })
+        if race.office == 'council' then
+            seated = MySQL.query.await(
+                'SELECT candidate_cid, candidate_name, votes FROM pengu_elections WHERE office = ? AND status = ? ORDER BY votes DESC, id ASC LIMIT ?',
+                { race.office, 'open', Config.councilSeats }) or {}
+        else
+            winner = MySQL.single.await(
+                'SELECT candidate_cid, candidate_name, votes FROM pengu_elections WHERE office = ? AND status = ? ORDER BY votes DESC, id ASC LIMIT 1',
+                { race.office, 'open' })
+        end
         MySQL.update.await('UPDATE pengu_elections SET status = ? WHERE office = ? AND status = ?',
             { 'closed', race.office, 'open' })
         setSetting('election_open_mayor', 0)
-        if winner then
+        if race.office == 'council' then
+            if #seated > 0 then
+                local cids, names = {}, {}
+                for _, w in ipairs(seated) do
+                    cids[#cids + 1]   = w.candidate_cid
+                    names[#names + 1] = w.candidate_name
+                end
+                setSetting('council_cids', json.encode(cids))
+                setSetting('council_names', json.encode(names))
+            end
+        elseif winner then
             setSetting('mayor_cid', winner.candidate_cid)
             setSetting('mayor_name', winner.candidate_name)
         end
@@ -199,7 +269,24 @@ local function closeElection(src)
         return
     end
     ELECTION = nil
-    if winner then
+    if race.office == 'council' then
+        if seated and #seated > 0 then
+            COUNCIL.cids, COUNCIL.names = {}, {}
+            local parts = {}
+            for _, w in ipairs(seated) do
+                COUNCIL.cids[#COUNCIL.cids + 1]   = w.candidate_cid
+                COUNCIL.names[#COUNCIL.names + 1] = w.candidate_name
+                local v = tonumber(w.votes) or 0
+                parts[#parts + 1] = ('%s (%d vote%s)'):format(w.candidate_name, v, v == 1 and '' or 's')
+            end
+            publishCouncil()
+            announce('ELECTION',
+                ('The polls are CLOSED. Seated on the ADVISORY city council: %s. The council advises the Mayor and holds no powers of office. See /council.')
+                :format(table.concat(parts, ', ')), 'success')
+        else
+            announce('ELECTION', 'The polls are CLOSED. Nobody ran for council - the seats are unchanged.')
+        end
+    elseif winner then
         MAYOR.cid, MAYOR.name = winner.candidate_cid, winner.candidate_name
         publishMayor()
         local v = tonumber(winner.votes) or 0
@@ -243,7 +330,7 @@ RegisterCommand('election', function(src, args)
     if action == 'open' then
         local office = tostring(args[2] or 'mayor'):lower()
         if not Config.offices[office] then
-            notify(src, 'Unknown office. Available: mayor.', 'error')
+            notify(src, 'Unknown office. Available: mayor, council.', 'error')
             return
         end
         openElection(src, office)
@@ -255,14 +342,17 @@ RegisterCommand('election', function(src, args)
 end, false)
 
 -- ---------- candidacy ----------
-RegisterCommand('runformayor', function(src)
+-- Shared registration flow for every office (/runformayor -> 'mayor', /runforcouncil ->
+-- 'council'). The fee is balance-prechecked (see the header note on dontAllowMinus) and
+-- refunded on any failure after the charge.
+local function registerCandidate(src, office)
     if not src or src <= 0 then return end
     if busy[src] then return end
     busy[src] = true
     local ok, err = pcall(function()
         local race = ELECTION
-        if not race or race.office ~= 'mayor' then
-            notify(src, 'There is no open mayoral election.', 'error')
+        if not race or race.office ~= office then
+            notify(src, ('There is no open %s election.'):format(Config.offices[office] or office), 'error')
             return
         end
         local p = getPlayer(src)
@@ -274,6 +364,18 @@ RegisterCommand('runformayor', function(src)
         end
         if #race.candidates >= Config.maxCandidates then
             notify(src, ('The ballot is full (%d candidates max).'):format(Config.maxCandidates), 'error')
+            return
+        end
+
+        local fee = officeFee(office)
+
+        -- EXPLICIT balance precheck. dontAllowMinus = {'cash'} only on this server, so
+        -- RemoveMoney('bank', ...) always returns true - it would drive the account
+        -- negative instead of failing. GetMoney is synchronous (no await), so checking
+        -- here cannot race the reservation below.
+        local bal = tonumber(p.Functions.GetMoney('bank')) or 0
+        if bal < fee then
+            notify(src, ('You need $%d in the bank to register.'):format(fee), 'error')
             return
         end
 
@@ -290,10 +392,10 @@ RegisterCommand('runformayor', function(src)
             end
         end
 
-        -- charge the fee (return-checked; refunded on any later failure)
-        if not p.Functions.RemoveMoney('bank', Config.registrationFee, 'mayor-candidacy') then
+        -- charge the fee (return-checked as defense in depth; refunded on any later failure)
+        if not p.Functions.RemoveMoney('bank', fee, office .. '-candidacy') then
             unreserve()
-            notify(src, ('You need $%d in the bank to register.'):format(Config.registrationFee), 'error')
+            notify(src, ('You need $%d in the bank to register.'):format(fee), 'error')
             return
         end
 
@@ -306,16 +408,20 @@ RegisterCommand('runformayor', function(src)
                 MySQL.update.await('UPDATE pengu_elections SET status = ? WHERE id = ?', { 'closed', rowId })
             end
             unreserve()
-            p.Functions.AddMoney('bank', Config.registrationFee, 'mayor-candidacy-refund')
+            p.Functions.AddMoney('bank', fee, office .. '-candidacy-refund')
             notify(src, 'Registration failed - your fee was refunded.', 'error')
             return
         end
         cand.rowId = rowId
-        announce('ELECTION', ('%s has entered the mayoral race! Cast your vote with /vote.'):format(name))
+        announce('ELECTION', ('%s has entered the %s race! Cast your vote with /vote.')
+            :format(name, office == 'council' and 'council' or 'mayoral'))
     end)
     busy[src] = nil
-    if not ok then print('[pengu_gov] runformayor error: ' .. tostring(err)) end
-end, false)
+    if not ok then print('[pengu_gov] register error (' .. tostring(office) .. '): ' .. tostring(err)) end
+end
+
+RegisterCommand('runformayor', function(src) registerCandidate(src, 'mayor') end, false)
+RegisterCommand('runforcouncil', function(src) registerCandidate(src, 'council') end, false)
 
 -- ---------- voting ----------
 RegisterCommand('vote', function(src)
@@ -331,7 +437,7 @@ RegisterCommand('vote', function(src)
         if c.rowId then list[#list + 1] = { id = c.rowId, name = c.name } end
     end
     if #list == 0 then
-        notify(src, 'Nobody is on the ballot yet. Run yourself with /runformayor!', 'error')
+        notify(src, ('Nobody is on the ballot yet. Run yourself with %s!'):format(officeRegisterCmd(race.office)), 'error')
         return
     end
     TriggerClientEvent('pengu_gov:client:voteMenu', src, { office = race.office, candidates = list })
@@ -385,6 +491,23 @@ RegisterNetEvent('pengu_gov:server:vote', function(candidateRowId)
     busy[src] = nil
     if not ok then print('[pengu_gov] vote error: ' .. tostring(err)) end
 end)
+
+-- ---------- /council: public roster of the seated government ----------
+RegisterCommand('council', function(src)
+    if MAYOR.cid then
+        notify(src, ('Mayor: %s.'):format(MAYOR.name or 'Unknown'), 'inform')
+    else
+        notify(src, 'Mayor: none (office vacant).', 'inform')
+    end
+    if #COUNCIL.names == 0 then
+        notify(src, 'City Council: no seated members.', 'inform')
+        return
+    end
+    notify(src, ('City Council (advisory - %d member%s):'):format(#COUNCIL.names, #COUNCIL.names == 1 and '' or 's'), 'inform')
+    for i = 1, #COUNCIL.names do
+        notify(src, ('%d. %s'):format(i, tostring(COUNCIL.names[i])), 'inform')
+    end
+end, false)
 
 -- ---------- mayor powers (every command re-checks citizenid == mayor_cid server-side) ----------
 local function mayorOk(src)

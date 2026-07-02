@@ -43,9 +43,11 @@ end)
 -- chat suggestions
 TriggerEvent('chat:addSuggestion', '/election', 'City elections: status for everyone; open/close for gov admins', {
     { name = 'action', help = 'open | close | status' },
-    { name = 'office', help = 'mayor (only used with open)' },
+    { name = 'office', help = 'mayor | council (only used with open)' },
 })
 TriggerEvent('chat:addSuggestion', '/runformayor', ('Register as a mayoral candidate ($%d bank fee)'):format(Config.registrationFee), {})
+TriggerEvent('chat:addSuggestion', '/runforcouncil', ('Register as a city council candidate ($%d bank fee)'):format(Config.councilFee), {})
+TriggerEvent('chat:addSuggestion', '/council', 'List the current mayor and advisory council members', {})
 TriggerEvent('chat:addSuggestion', '/vote', 'Vote in the open city election (one vote per citizen)', {})
 TriggerEvent('chat:addSuggestion', '/settaxrate', 'MAYOR ONLY: set the city tax rate', {
     { name = 'percent', help = ('%d-%d'):format(Config.taxMin, Config.taxMax) },

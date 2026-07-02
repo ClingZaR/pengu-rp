@@ -29,6 +29,15 @@ Config.loanIntervalMs     = 1800000 -- 30 min between installment collection pas
 Config.garnishAfterMisses = 3       -- consecutive missed installments before garnish mode
 Config.garnishMultiplier  = 2       -- garnish = installment * this (double charge to catch up)
 
+-- ----- loan eligibility gates (defaults preserve legacy behavior: no gates) -----
+Config.loanRequireJob     = false   -- true = players on the 'unemployed' job cannot take a loan
+Config.loanMinPlaytimeMin = 0       -- RESERVED, NOT ENFORCED. There is no playtime source on
+                                    -- this server to read (pengu_core/server/daily.lua only
+                                    -- tracks login-day streaks, not minutes played), so ONLY
+                                    -- the job gate above is implemented. This key exists so a
+                                    -- future playtime tracker can be wired in without a config
+                                    -- migration; any value here is currently ignored.
+
 -- ===================== income tax =====================
 Config.taxDefault = 0.05         -- used when GlobalState.penguTaxRate is nil (pengu_gov not up yet)
 Config.taxMax     = 0.25         -- hard ceiling on the read rate

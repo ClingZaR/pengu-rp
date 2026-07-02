@@ -23,6 +23,7 @@ client_scripts {
     'client/marriage.lua',
     'client/events.lua',
     'client/consumables.lua', -- ox_inventory item effects (steroid / adrenaline_shot)
+    'client/bio.lua',         -- character bio (/setbio, /bio)
 }
 
 server_scripts {
@@ -37,6 +38,8 @@ server_scripts {
     'server/marriage.lua',
     'server/events.lua',
     'server/daily.lua',
+    'server/bio.lua',         -- character bio (metadata 'bio', 5m proximity reads)
+    'server/craftgate.lua',   -- ox_inventory craftItem hook: criminal level gate on WEAPON_* recipes
 }
 
 ui_page 'html/hotkeys.html'

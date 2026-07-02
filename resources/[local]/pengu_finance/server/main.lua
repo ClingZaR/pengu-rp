@@ -3,7 +3,12 @@
 --    +5 on-time loan installment, -25 missed installment, +2 to a business owner per
 --    fully-paid payroll cycle. Updates are a single atomic UPSERT (no read-modify-write race).
 -- 2) LOANS: pengu_loans. Tiers gated by credit score, ONE active loan per citizen.
---    Principal is paid to the bank FIRST (return-checked) and the DB row committed after;
+--    The active-loan read is FAIL-CLOSED: if the DB read throws, getActiveLoan returns the
+--    LOAN_READ_ERROR sentinel and every money path (apply/pay/collect) ABORTS instead of
+--    treating the outage as "no loan" (which would have allowed a second concurrent loan).
+--    Optional eligibility gates (Config.loanRequireJob; loanMinPlaytimeMin is reserved but
+--    unenforced - no playtime source exists) run in the apply path; defaults keep legacy
+--    behavior. Principal is paid to the bank FIRST (return-checked) and the DB row committed after;
 --    if the insert fails the principal is clawed back. A 30-min thread charges the
 --    installment from ONLINE borrowers only - offline borrowers accrue NOTHING and are
 --    never charged or penalized while away (documented design choice: the timer only
@@ -84,11 +89,21 @@ local function bumpCredit(cid, delta)
 end
 
 -- ===================== loans: data =====================
+-- Sentinel returned when the ACTIVE-LOAN READ ITSELF FAILS. FAIL-CLOSED: a failed read
+-- used to return nil, which callers interpreted as "no active loan" - so a borrower could
+-- be granted a SECOND concurrent loan while the DB was down. Every caller must treat this
+-- sentinel as "state unknown" and ABORT (no grants, no charges, no payments).
+local LOAN_READ_ERROR = {}
+local BANK_DOWN_MSG = 'Bank systems are down, try again.'
+
 local function getActiveLoan(cid)
     local ok, row = pcall(MySQL.single.await,
         "SELECT id, citizenid, principal, remaining, installment, interest_pct, missed, status, created_at " ..
         "FROM pengu_loans WHERE citizenid = ? AND status = 'active' LIMIT 1", { cid })
-    if not ok then return nil end
+    if not ok then
+        print('[pengu_finance] getActiveLoan DB read FAILED for ' .. tostring(cid) .. ': ' .. tostring(row))
+        return LOAN_READ_ERROR -- fail closed; never read a broken DB as "no loan"
+    end
     return row
 end
 
@@ -106,6 +121,20 @@ local function eligibleTiers(score)
     return out
 end
 
+-- Config-driven loan eligibility gates (see shared/config.lua; defaults = no gates).
+-- NOTE: Config.loanMinPlaytimeMin is NOT enforced - there is no playtime source on this
+-- server to read (pengu_core daily.lua only tracks login-day streaks), so only the job
+-- gate runs. Returns true, or false plus a player-facing reason.
+local function loanGatesOk(p)
+    if Config.loanRequireJob then
+        local jobName = p and p.PlayerData and p.PlayerData.job and p.PlayerData.job.name
+        if not jobName or jobName == 'unemployed' then
+            return false, 'The bank requires proof of employment - get a job before applying for a loan.'
+        end
+    end
+    return true
+end
+
 -- ===================== /credit + /loan commands (server-registered, client draws UI) =====================
 RegisterCommand('credit', function(src)
     if not src or src <= 0 then return end
@@ -113,6 +142,7 @@ RegisterCommand('credit', function(src)
     if not cid then return end
     local score = getCredit(cid)
     local loan = getActiveLoan(cid)
+    if loan == LOAN_READ_ERROR then loan = nil end -- display only: show the score, omit loan info
     TriggerClientEvent('pengu_finance:showCredit', src, {
         score = score,
         loan = loan and {
@@ -123,9 +153,19 @@ RegisterCommand('credit', function(src)
     })
 end, false)
 
-local function cmdLoanApply(src, cid)
-    if getActiveLoan(cid) then
+local function cmdLoanApply(src, cid, p)
+    local existing = getActiveLoan(cid)
+    if existing == LOAN_READ_ERROR then
+        notify(src, BANK_DOWN_MSG, 'error') -- fail closed: unknown state never offers a loan
+        return
+    end
+    if existing then
         notify(src, 'You already have an active loan. Pay it off first (/loan status).', 'error')
+        return
+    end
+    local gateOk, gateWhy = loanGatesOk(p)
+    if not gateOk then
+        notify(src, gateWhy, 'error')
         return
     end
     local score = getCredit(cid)
@@ -140,6 +180,10 @@ end
 
 local function cmdLoanStatus(src, cid)
     local loan = getActiveLoan(cid)
+    if loan == LOAN_READ_ERROR then
+        notify(src, BANK_DOWN_MSG, 'error')
+        return
+    end
     if not loan then
         notify(src, 'You have no active loan.', 'inform')
         return
@@ -168,6 +212,7 @@ local function payLoan(src, amount)
     end
     local okFlow, errFlow = pcall(function()
         local loan = getActiveLoan(cid)
+        if loan == LOAN_READ_ERROR then notify(src, BANK_DOWN_MSG, 'error') return end
         if not loan then notify(src, 'You have no active loan.', 'error') return end
         local remaining = tonumber(loan.remaining) or 0
         if amount > remaining then amount = remaining end
@@ -202,16 +247,17 @@ end
 
 RegisterCommand('loan', function(src, args)
     if not src or src <= 0 then return end
-    local cid = getCid(src)
-    if not cid then return end
+    local cid, p = getCid(src)
+    if not cid or not p then return end
     local sub = tostring(args[1] or ''):lower()
     if sub == 'apply' then
-        cmdLoanApply(src, cid)
+        cmdLoanApply(src, cid, p)
     elseif sub == 'pay' then
         if args[2] then
             payLoan(src, args[2])
         else
             local loan = getActiveLoan(cid)
+            if loan == LOAN_READ_ERROR then notify(src, BANK_DOWN_MSG, 'error') return end
             if not loan then notify(src, 'You have no active loan.', 'error') return end
             TriggerClientEvent('pengu_finance:promptPayAmount', src, tonumber(loan.remaining) or 0)
         end
@@ -235,8 +281,19 @@ RegisterNetEvent('pengu_finance:applyLoan', function(tierIdx)
         return
     end
     local okFlow, errFlow = pcall(function()
-        if getActiveLoan(cid) then
+        local existing = getActiveLoan(cid)
+        if existing == LOAN_READ_ERROR then
+            -- FAIL CLOSED: unknown loan state must never grant a (possibly second) loan
+            notify(src, BANK_DOWN_MSG, 'error')
+            return
+        end
+        if existing then
             notify(src, 'You already have an active loan.', 'error')
+            return
+        end
+        local gateOk, gateWhy = loanGatesOk(p)
+        if not gateOk then
+            notify(src, gateWhy, 'error')
             return
         end
         local score = getCredit(cid)
@@ -290,6 +347,7 @@ end)
 -- only moves when a charge actually lands.
 local function collectFrom(src, p, cid)
     local loan = getActiveLoan(cid)
+    if loan == LOAN_READ_ERROR then return end -- DB read failed: charge nothing this pass
     if not loan then return end
     if not lock(cid) then return end -- player mid-transaction; catch them next pass
     local okFlow, errFlow = pcall(function()

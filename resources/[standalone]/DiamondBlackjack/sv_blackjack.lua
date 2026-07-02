@@ -98,6 +98,12 @@ AddEventHandler("Blackjack:setBlackjackBet",function(gameId,betAmount,chairId)
             blackjackGameData[gameId] = {}
         end
         if not blackjackGameInProgress[gameId] then
+            -- PenguRP: reject duplicate bets in the same round; a re-sent bet event
+            -- previously took cash a second time and overwrote the first recorded bet
+            if blackjackGameData[gameId][source] ~= nil and blackjackGameData[gameId][source][1] ~= nil then
+                TriggerClientEvent("blackjack:notify",source,"~r~You already placed a bet this round.")
+                return
+            end
             if tonumber(betAmount) then
                 betAmount = math.floor(tonumber(betAmount)) -- PenguRP: whole chips only, keeps recorded bet equal to cash taken
                 if betAmount > 0 then

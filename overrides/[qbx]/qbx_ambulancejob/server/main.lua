@@ -57,7 +57,10 @@ RegisterNetEvent('hospital:server:TreatWounds', function(playerId)
 	if player.PlayerData.job.type ~= 'ems' or not patient then return end
 
 	if exports.ox_inventory:RemoveItem(src, 'bandage', 1) then
-        TriggerClientEvent('hospital:client:HealInjuries', patient.PlayerData.source, 'full')
+        -- PenguRP: hospital:client:HealInjuries is registered by no resource (bandage was
+        -- consumed with no effect); qbx_medical:client:heal is the real handler and heals
+        -- all wounds when passed 'full' (qbx_medical/client/main.lua)
+        TriggerClientEvent('qbx_medical:client:heal', patient.PlayerData.source, 'full')
     else
         exports.qbx_core:Notify(src, locale('error.no_bandage'), 'error')
     end

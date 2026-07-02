@@ -1,8 +1,13 @@
 -- PenguRP Court Sessions (pengu_court) - SERVER.
 -- Judge-run trials against defendants with outstanding pengu_mdt_charges rows.
--- Guilty verdicts jail via xt-prison JailPlayerById (caps at 60), force the fine
--- from bank, then flip the defendant's outstanding rows to 'processed' - the same
--- UPDATE semantics as pengu_mdt /jail. Not-guilty clears the rows with no penalty.
+-- Guilty verdicts jail via xt-prison JailPlayerById (caps at 60), record a
+-- pengu_mdt_imprisonments conviction row (officer = the court, plea = the
+-- defendant's plea), flip the outstanding rows to 'processed' stamped with that
+-- case id (same semantics as pengu_mdt /jail, so the MDT rap sheet shows the
+-- outcome), then force the fine from bank LAST. Not-guilty clears the rows with
+-- no penalty and NO imprisonment row - acquittals are not convictions.
+-- Verdict execution is pcall-guarded: a DB/export fault unlocks the session so
+-- the judge can retry; /courtend can override a lock older than 60s.
 -- One active session max, replicated via GlobalState.penguCourtSession.
 -- Optional jury: random online non-LEO citizens vote; majority decides, ties acquit.
 -- ASCII only. luac clean.
@@ -32,10 +37,31 @@ WHERE status = 'outstanding'
 GROUP BY citizenid
 ]]
 
--- Same flip as pengu_mdt /jail: clears the person from outstanding + warrants.
+-- Acquittal flip (no case link): clears the person from outstanding + warrants
+-- while leaving case_id = 0, so the rap sheet shows NO conviction/plea for them.
 local MARK_PROCESSED_SQL = [[
 UPDATE pengu_mdt_charges SET status = 'processed'
 WHERE citizenid = ? AND status = 'outstanding'
+]]
+
+-- Conviction path - the exact pengu_mdt /jail semantics: record the imprisonment
+-- (rap-sheet case row), then flip the rows AND stamp the case id so the MDT
+-- Person tab joins plea/outcome per charge (HISTORY_FOR_PERSON_SQL in pengu_mdt).
+local INSERT_IMPRISONMENT_SQL = [[
+INSERT INTO pengu_mdt_imprisonments (citizenid, officer, months, fine, charges, plea, charge_list)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+]]
+
+local MARK_PROCESSED_CASE_SQL = [[
+UPDATE pengu_mdt_charges SET status = 'processed', case_id = ?
+WHERE citizenid = ? AND status = 'outstanding'
+]]
+
+-- Charge titles for the imprisonment's charge_list (captured BEFORE the flip).
+local OUTSTANDING_TITLES_SQL = [[
+SELECT title FROM pengu_mdt_charges
+WHERE citizenid = ? AND status = 'outstanding'
+ORDER BY created_at DESC
 ]]
 
 local LOG_SQL = [[
@@ -153,13 +179,11 @@ end
 -- Verdict execution (shared by /verdict guilty|notguilty and the jury tally)
 ----------------------------------------------------------------------
 
-local function executeVerdict(verdict, judgePct)
-    local s = session
-    if not s or s.locked then return end
-    s.locked = true -- blocks /courtend + a second /verdict while the awaits below run
-    s.stage = 'verdict'
-    publishSession()
-
+-- Body of the verdict pipeline. Runs with s.locked already set and is ALWAYS
+-- invoked via pcall from executeVerdict: any DB/export error here is caught
+-- there, which unlocks the session (never a permanent lock) and tells the
+-- judge to retry. Early returns that unlock themselves are fine too.
+local function runVerdictLocked(s, verdict, judgePct)
     local def = qbx:GetPlayer(s.defSrc)
     if not def or not def.PlayerData or def.PlayerData.citizenid ~= s.defCid then
         chat(s.judgeSrc, 'Defendant is no longer available. Session aborted, nothing processed.', 'err')
@@ -180,8 +204,12 @@ local function executeVerdict(verdict, judgePct)
     end
 
     if verdict == 'notguilty' then
+        -- Acquittal: clear the rows WITHOUT an imprisonment row (case_id stays 0),
+        -- so the MDT rap sheet never shows an acquittal as a conviction.
         MySQL.update.await(MARK_PROCESSED_SQL, { s.defCid })
         MySQL.insert.await(LOG_SQL, { s.defCid, s.judgeCid, 'notguilty', 0, 0 })
+        -- charges are gone, so the wanted level derived from them clears too (mdt /jail parity)
+        pcall(function() exports.pengu_mdt:SetWantedLevel(s.defCid, 0, 'court acquittal') end)
         chat(s.judgeSrc, ('Verdict: NOT GUILTY. %s acquitted, %d charge(s) cleared.'):format(s.defName, charges), 'ok')
         toast(s.defSrc, 'Verdict: NOT GUILTY. You are acquitted and your charges are cleared.', 'success')
         if session == s and s.jury then
@@ -205,27 +233,58 @@ local function executeVerdict(verdict, judgePct)
     if months < 0 then months = 0 end
     local served = math.min(months, Config.maxSentence)
 
-    -- Jail first (mdt /jail order); if the export fails nothing has been processed.
+    -- Jail first (mdt /jail order); if this fails nothing has been processed.
+    -- pcall'd explicitly so an export fault (resource stopped, script error)
+    -- unlocks the session instead of leaving it stuck.
     if served > 0 then
-        local jailed = exports['xt-prison']:JailPlayerById(s.defSrc, served)
+        local okJail, jailed = pcall(function()
+            return exports['xt-prison']:JailPlayerById(s.defSrc, served)
+        end)
+        if not okJail then
+            s.locked = false
+            s.stage = 'arguments'
+            publishSession()
+            chat(s.judgeSrc, 'Court systems failed - verdict not executed, try again.', 'err')
+            return
+        end
         if not jailed then
             s.locked = false
+            s.stage = 'arguments'
+            publishSession()
             chat(s.judgeSrc, 'Could not jail the defendant. Nothing was processed; retry or /courtend.', 'err')
             return
         end
     end
 
-    -- Forced fine from bank; RemoveMoney returns false and deducts nothing if short.
+    -- Rap sheet (mirrors pengu_mdt /jail): capture the charge titles BEFORE the
+    -- flip, record the conviction as an imprisonment row (officer = the court,
+    -- plea = the defendant's plea in mdt vocabulary), then stamp its id onto the
+    -- processed rows so the MDT Person tab shows plea/outcome per charge.
+    local chargeRows = MySQL.query.await(OUTSTANDING_TITLES_SQL, { s.defCid }) or {}
+    local titles = {}
+    for _, r in ipairs(chargeRows) do titles[#titles + 1] = r.title end
+    local mdtPlea = (s.plea == 'guilty') and 'guilty' or 'not_guilty'
+    local caseId = MySQL.insert.await(INSERT_IMPRISONMENT_SQL, {
+        s.defCid, 'Court: ' .. s.judgeName, served, fine, charges, mdtPlea, table.concat(titles, ', '),
+    })
+    MySQL.update.await(MARK_PROCESSED_CASE_SQL, { caseId or 0, s.defCid })
+    MySQL.insert.await(LOG_SQL, { s.defCid, s.judgeCid, 'guilty', served, fine })
+    -- conviction processed: clear the wanted level like mdt /jail does
+    pcall(function() exports.pengu_mdt:SetWantedLevel(s.defCid, 0, 'court conviction') end)
+
+    -- Fine LAST, after the rows are processed: if a money move failed AFTER
+    -- processing the defendant merely keeps $fine (lesser harm), whereas a fine
+    -- taken BEFORE a failed UPDATE would leave them paid but still charged.
+    -- Note: on this server dontAllowMinus covers cash only, so RemoveMoney('bank')
+    -- never comes back short - it drives bank negative (a forced debt) and returns
+    -- true. The failure branch below is defensive only; nothing to roll back.
     if fine > 0 then
         local paid = def.Functions and def.Functions.RemoveMoney
             and def.Functions.RemoveMoney('bank', fine, 'court-fine')
         if not paid then
-            chat(s.judgeSrc, ('Defendant could not pay the $%d fine (insufficient bank funds).'):format(fine), 'err')
+            chat(s.judgeSrc, ('Defendant could not pay the $%d fine.'):format(fine), 'err')
         end
     end
-
-    MySQL.update.await(MARK_PROCESSED_SQL, { s.defCid })
-    MySQL.insert.await(LOG_SQL, { s.defCid, s.judgeCid, 'guilty', served, fine })
 
     chat(s.judgeSrc, ('Verdict: GUILTY. %s - %d charge(s) processed, %d min, $%d fined.'):format(
         s.defName, charges, served, fine), 'ok')
@@ -236,6 +295,30 @@ local function executeVerdict(verdict, judgePct)
         end
     end
     if session == s then clearSession(nil) end
+end
+
+local function executeVerdict(verdict, judgePct)
+    local s = session
+    if not s or s.locked then return end
+    s.locked = true -- blocks /courtend + a second /verdict while the awaits run
+    s.lockAt = os.time() -- lets /courtend override a lock stuck for over 60s
+    s.stage = 'verdict'
+    publishSession()
+
+    -- pcall guard: MySQL awaits (and anything else in the pipeline) can raise on
+    -- a DB fault. Without this the session would stay locked forever, bricking
+    -- /verdict AND /courtend. On failure: unlock, keep the session intact (no
+    -- clearSession - nothing was necessarily processed), and tell the judge.
+    local ok, err = pcall(runVerdictLocked, s, verdict, judgePct)
+    if not ok then
+        print(('[pengu_court] verdict pipeline error: %s'):format(tostring(err)))
+        if session == s then
+            s.locked = false
+            s.stage = 'arguments'
+            publishSession()
+            chat(s.judgeSrc, 'Court systems failed - verdict not executed, try again.', 'err')
+        end
+    end
 end
 
 ----------------------------------------------------------------------
@@ -301,6 +384,7 @@ RegisterCommand('courtstart', function(source, args)
         fine = tonumber(sums.fine) or 0,
         jury = nil,
         locked = false,
+        lockAt = 0, -- os.time() of the last lock; /courtend can override after 60s
     }
     publishSession()
 
@@ -546,7 +630,18 @@ RegisterCommand('courtend', function(source)
     if not getJudge(source) then chat(source, 'Judges only.', 'err') return end
     if not session then chat(source, 'There is no court session in progress.', 'err') return end
     if session.judgeSrc ~= source then chat(source, 'Only the presiding judge can end the session.', 'err') return end
-    if session.locked then chat(source, 'The verdict is already being processed.', 'err') return end
+    if session.locked then
+        -- Escape hatch: a healthy verdict pipeline finishes (or unlocks itself)
+        -- in seconds. A lock older than 60s means it died mid-flight, so let the
+        -- judge close the session manually - a stuck trial must never need a
+        -- resource restart.
+        local age = os.time() - (session.lockAt or 0)
+        if age < 60 then
+            chat(source, 'The verdict is already being processed.', 'err')
+            return
+        end
+        chat(source, ('Overriding a stale verdict lock (%ds old).'):format(age), 'info')
+    end
     chat(source, 'Session ended. Nothing was processed.', 'ok')
     clearSession('Court session ended by the judge. Nothing was processed.', 'inform')
 end, false)
