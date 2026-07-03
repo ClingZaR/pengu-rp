@@ -125,7 +125,7 @@ Config.dealerTypes = {
             { item = 'screwdriverset',   label = 'Screwdriver Set',   price = 400,  count = 1, minLevel = 1 },
             { item = 'repairkit',        label = 'Repair Kit',        price = 800,  count = 1, minLevel = 1 },
             { item = 'advancedlockpick', label = 'Advanced Lockpick', price = 1200, count = 1, minLevel = 2 },
-            { item = 'drill',            label = 'Drill',             price = 3000, count = 1, minLevel = 3 },
+            { item = 'drill',            label = 'Drill',             price = 800,  count = 1, minLevel = 3 },
         },
         interactXP = { category = 'criminal', amount = 35 },
         gangRep    = 20,
