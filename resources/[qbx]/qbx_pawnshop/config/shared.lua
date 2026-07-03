@@ -41,6 +41,11 @@ return {
         {
             item = 'laptop',
             price = math.random(400, 800)
+        },
+        -- PenguRP: markedbills from store/safe robbery fenced here at ~65% face value avg
+        {
+            item = 'markedbills',
+            price = math.random(270, 420)
         }
     },
     meltingItems = { -- meltTime is amount of time in minutes per item
