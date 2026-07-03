@@ -73,6 +73,20 @@ RegisterNetEvent('mana_hunting:harvestCarcass',function (entityId, bone)
     local carcassModel = GetEntityModel(entity)
     local carcass = Config.Carcass[carcassModel]
     local grade, image = getCarcassGrade(weapon, bone, carcass)
+    -- PenguRP: knife is the legal baseline hunting tool; any firearm requires a
+    -- weaponlicense to qualify for ★★ or ★★★ grades. Without a license the kill
+    -- still counts (no hard block) but the carcass is always ★☆☆.
+    if weapon ~= `WEAPON_KNIFE` then
+        local hasLicense = (exports.ox_inventory:GetItemCount(source, 'weaponlicense') or 0) >= 1
+        if not hasLicense then
+            grade = '★☆☆'
+            image = carcass.item .. '1'
+            TriggerClientEvent('ox_lib:notify', source, {
+                type = 'inform',
+                description = 'Basic carcass grade — get a firearms license to unlock rifle hunting grades.'
+            })
+        end
+    end
     if exports.ox_inventory:CanCarryItem(source, carcass.item, 1) and DoesEntityExist(entity) and GetEntityAttachedTo(entity) == 0 then
         exports.ox_inventory:AddItem(source, carcass.item, 1, {type = grade, image =  image})
         DeleteEntity(entity)
