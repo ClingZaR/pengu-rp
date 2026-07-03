@@ -16,6 +16,9 @@ Config.creditMissed  = -25 -- per missed loan installment
 Config.creditPayroll = 2   -- + to the OWNER per fully-paid business payroll cycle
 
 -- ===================== loans =====================
+-- Set to false to disable the loan system entirely (commands return a not-available notice).
+Config.loansEnabled = false -- PenguRP: disabled until server economy is balanced
+
 -- Tiers gated by credit score. A player is offered every tier whose minScore they meet.
 -- total owed = amount * (1 + interest); installment = ceil(total / loanInstallments).
 Config.loanTiers = {

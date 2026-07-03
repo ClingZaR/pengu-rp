@@ -2,6 +2,9 @@
 
 Config = {}
 
+-- Master toggle. Set true when the court system is ready to go live.
+Config.enabled = false -- PenguRP: disabled until wanted level replacement is designed
+
 -- Guilty plea cuts this fraction off the sentence (mirrors pengu_mdt PLEA_GUILTY_PCT).
 Config.pleaReduction = 0.25
 

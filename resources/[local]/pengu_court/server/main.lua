@@ -14,6 +14,11 @@
 
 local qbx = exports.qbx_core
 
+if not Config.enabled then -- PenguRP: court system disabled via shared/config.lua
+    print('[pengu_court] Court system is disabled (Config.enabled = false). All commands inert.')
+    return
+end
+
 ----------------------------------------------------------------------
 -- SQL (charge queries mirror pengu_mdt's; the UPDATE is its exact semantics)
 ----------------------------------------------------------------------

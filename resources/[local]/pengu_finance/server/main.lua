@@ -247,6 +247,10 @@ end
 
 RegisterCommand('loan', function(src, args)
     if not src or src <= 0 then return end
+    if not Config.loansEnabled then -- PenguRP: loans disabled
+        notify(src, 'Loans are not available yet. Check back later.', false)
+        return
+    end
     local cid, p = getCid(src)
     if not cid or not p then return end
     local sub = tostring(args[1] or ''):lower()

@@ -14,7 +14,7 @@
 
     Callbacks (dual-registered under pengu_mdt:<name> AND pengu_mdt:server:<name>):
       LEO-only (getOfficer): getDashboard, placeCharges, getBolos, createBolo,
-        cancelBolo, createReport, getCameras, setWanted
+        cancelBolo, createReport, getCameras
       LEO + court (getMdtUser; judge/lawyer read-only): searchVehicle,
         searchPerson, getPenalCode, getWarrants (derived, online-only),
         getReports, getReport, getBodycam
@@ -22,10 +22,6 @@
         getRecentMedical. EMS gets NOTHING else, and LEO/court get NO
         medical data (medical privacy) - see pengu_mdt_medical below.
 
-    WANTED LEVEL (0-5, pengu_mdt_wanted): auto-derived on placeCharges, cleared
-    by /jail, manual via /wanted, /unwanted + the setWanted MDT action, offline
-    decay, dispatch BOLO ping at level >= 3. Exports: GetWantedLevel(cid),
-    SetWantedLevel(cid, level, reason).
 ]]
 
 ----------------------------------------------------------------------
@@ -184,16 +180,6 @@ CREATE TABLE IF NOT EXISTS pengu_mdt_bodycam (
   captured_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   image LONGTEXT,
   INDEX idx_bodycam_cid (officer_cid)
-)
-]]
-
--- Wanted levels (1-5): one row per wanted citizen; level 0 = row deleted.
-local CREATE_WANTED_SQL = [[
-CREATE TABLE IF NOT EXISTS pengu_mdt_wanted (
-  citizenid VARCHAR(64) PRIMARY KEY,
-  level TINYINT NOT NULL DEFAULT 1,
-  reason VARCHAR(255) DEFAULT '',
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 )
 ]]
 
@@ -396,28 +382,6 @@ WHERE officer_cid = ? AND id NOT IN (
 )
 ]]
 
--- Wanted level lookups
-local WANTED_SELECT_SQL = [[
-SELECT level, reason FROM pengu_mdt_wanted WHERE citizenid = ? LIMIT 1
-]]
-
-local WANTED_UPSERT_SQL = [[
-INSERT INTO pengu_mdt_wanted (citizenid, level, reason) VALUES (?, ?, ?)
-ON DUPLICATE KEY UPDATE level = VALUES(level), reason = VALUES(reason), updated_at = CURRENT_TIMESTAMP
-]]
-
-local WANTED_DELETE_SQL = [[
-DELETE FROM pengu_mdt_wanted WHERE citizenid = ?
-]]
-
-local WANTED_ALL_SQL = [[
-SELECT citizenid, level, reason FROM pengu_mdt_wanted
-]]
-
-local WANTED_HIGH_SQL = [[
-SELECT citizenid, level, reason FROM pengu_mdt_wanted WHERE level >= 3
-]]
-
 -- Medical log (EMS tab): per-patient history + the newest-30 activity feed.
 local MEDICAL_INSERT_SQL = [[
 INSERT INTO pengu_mdt_medical (citizenid, patient_name, medic_name, action, detail)
@@ -450,17 +414,6 @@ SELECT patient_name, action, detail, medic_name,
 FROM pengu_mdt_medical
 ORDER BY id DESC
 LIMIT 30
-]]
-
--- Outstanding charge severity for the derived (automatic) wanted level.
-local WANTED_SEVERITY_SQL = [[
-SELECT
-  COALESCE(SUM(class = 'felony'),0)      AS felonies,
-  COALESCE(SUM(class = 'misdemeanor'),0) AS misdemeanors,
-  COALESCE(SUM(class = 'citation'),0)    AS citations,
-  COALESCE(MAX(months),0)                AS maxmonths
-FROM pengu_mdt_charges
-WHERE citizenid = ? AND status = 'outstanding'
 ]]
 
 ----------------------------------------------------------------------
@@ -559,99 +512,9 @@ local function leoNotify(src, message, ntype)
     notify(src, message, ntype, 'LEO')
 end
 
-----------------------------------------------------------------------
--- Wanted level (0-5). GTA native wanted is disabled server-wide; this is the
--- replacement. Server-authoritative, keyed by citizenid (never sent to any NUI).
---   AUTO:  placeCharges raises the level from outstanding charge severity.
---   CLEAR: /jail processing (charges -> processed) deletes the row.
---   DECAY: -1 level per 30 continuous minutes OFFLINE (online players stay wanted).
---   PING:  level >= 3 sends a BOLO-style dispatch on connect + every 10 min online
---          (via the shared exports.pengu_core:Dispatch relay, pcall-guarded).
-----------------------------------------------------------------------
-
-local WANTED_MAX = 5
-local WANTED_DECAY_SECONDS = 30 * 60
-local WANTED_PING_MS = 10 * 60 * 1000
-
-local offlineSecs = {} -- [citizenid] = offline seconds accrued toward the next decay step
-
-local function clampWanted(level)
-    level = math.floor(tonumber(level) or 0)
-    if level < 0 then return 0 end
-    if level > WANTED_MAX then return WANTED_MAX end
-    return level
-end
-
--- -> level (0 = not wanted), reason
-local function getWantedLevel(citizenid)
-    if type(citizenid) ~= 'string' or citizenid == '' then return 0, '' end
-    local row = MySQL.single.await(WANTED_SELECT_SQL, { citizenid })
-    if not row then return 0, '' end
-    return clampWanted(row.level), row.reason or ''
-end
-
--- Level 0 deletes the row; 1-5 upserts. Resets the decay clock on every change.
-local function setWantedLevel(citizenid, level, reason)
-    if type(citizenid) ~= 'string' or citizenid == '' then return false end
-    level = clampWanted(level)
-    offlineSecs[citizenid] = nil
-    if level == 0 then
-        MySQL.query.await(WANTED_DELETE_SQL, { citizenid })
-        return true
-    end
-    if type(reason) ~= 'string' then reason = '' end
-    MySQL.query.await(WANTED_UPSERT_SQL, { citizenid, level, reason:sub(1, 255) })
-    return true
-end
-
--- Exports for future systems (server-side; citizenid in, never through a NUI).
-exports('GetWantedLevel', function(citizenid)
-    local level = getWantedLevel(citizenid)
-    return level
-end)
-
-exports('SetWantedLevel', function(citizenid, level, reason)
-    return setWantedLevel(citizenid, level, reason)
-end)
-
--- Outstanding severity -> derived level: 3+ felonies or any charge >= 30 months
--- -> 5; any felony -> 3; misdemeanors only -> 2; citations only -> 1; none -> 0.
-local function deriveWantedLevel(citizenid)
-    local row = MySQL.single.await(WANTED_SEVERITY_SQL, { citizenid })
-    if not row then return 0 end
-    local felonies = tonumber(row.felonies) or 0
-    if felonies >= 3 or (tonumber(row.maxmonths) or 0) >= 30 then return 5 end
-    if felonies > 0 then return 3 end
-    if (tonumber(row.misdemeanors) or 0) > 0 then return 2 end
-    if (tonumber(row.citations) or 0) > 0 then return 1 end
-    return 0
-end
-
--- BOLO ping for an ONLINE wanted citizen (level >= 3). Uses the shared
--- pengu_core dispatch relay (one officer client fires ps-dispatch CustomAlert).
-local function sendWantedAlert(player, level, reason)
-    local ped = GetPlayerPed(player.PlayerData.source)
-    if not ped or ped == 0 then return end
-    local coords = GetEntityCoords(ped)
-    local name = fullName(player.PlayerData.charinfo)
-    local message
-    if level >= WANTED_MAX then
-        message = ('BOLO: %s - WANTED 5/5 - ARMED AND DANGEROUS - ALL UNITS'):format(name)
-    else
-        message = ('BOLO: %s - WANTED %d/5 - approach with caution'):format(name, level)
-    end
-    if type(reason) == 'string' and reason ~= '' then
-        message = ('%s (%s)'):format(message, reason:sub(1, 80))
-    end
-    pcall(function()
-        exports.pengu_core:Dispatch(coords, {
-            message = message,
-            code = '10-99',
-            icon = 'fas fa-star',
-            priority = level >= WANTED_MAX and 1 or 2,
-        })
-    end)
-end
+-- Wanted level exports: no-op stubs (system removed; pengu_court calls these safely). -- PenguRP
+exports('GetWantedLevel', function() return 0, '' end)
+exports('SetWantedLevel', function() end)
 
 ----------------------------------------------------------------------
 -- Callback handlers
@@ -770,9 +633,6 @@ local function handleSearchPerson(source, data)
         }
     end
 
-    -- Current wanted level (0 = not wanted) + reason; stars render in the NUI.
-    local wLevel, wReason = getWantedLevel(cid)
-
     return {
         found = true,
         name = row.name,
@@ -782,7 +642,6 @@ local function handleSearchPerson(source, data)
         outstanding = outstanding,
         history = history,
         prints = hasPrints,
-        wanted = { level = wLevel, reason = wReason },
     }
 end
 
@@ -864,13 +723,6 @@ local function handlePlaceCharges(source, data)
 
     for _, params in ipairs(rows) do
         MySQL.insert.await(INSERT_CHARGE_SQL, params)
-    end
-
-    -- AUTO WANTED: raise (never lower) the level from outstanding charge severity.
-    local current = getWantedLevel(cid)
-    local derived = deriveWantedLevel(cid)
-    if derived > current then
-        setWantedLevel(cid, derived, 'Outstanding charges')
     end
 
     -- Mugshots are NOT auto-captured on charge anymore. An officer takes the photo
@@ -982,7 +834,6 @@ local function handleGetWarrants(source)
                     charges = charges,
                     months = row and tonumber(row.months) or 0,
                     fine = row and tonumber(row.fine) or 0,
-                    wanted = getWantedLevel(pd.citizenid),
                 }
             end
         end
@@ -1059,37 +910,6 @@ local function handleGetCameras(source)
     return { feeds = feeds }
 end
 
--- setWanted {name, level:0-5, reason} -> { success, message, wanted:{level,reason} }
--- MDT Person tab action (LEO only; court sees the level read-only). BY NAME -
--- the cid is resolved internally and never returned.
-local function handleSetWanted(source, data)
-    local officer = getOfficer(source)
-    if not officer then return { success = false, message = 'Not authorized' } end
-    if type(data) ~= 'table' then return { success = false, message = 'Invalid request' } end
-
-    local name = data.name
-    if type(name) ~= 'string' or name == '' then
-        return { success = false, message = 'No target selected' }
-    end
-    local level = clampWanted(data.level)
-
-    local q = '%' .. name .. '%'
-    local prow = MySQL.single.await(PERSON_SQL, { q, q, q, q, q })
-    if not prow then return { success = false, message = 'Person not found' } end
-
-    local reason = type(data.reason) == 'string' and data.reason or ''
-    if level > 0 and reason:gsub('%s+', '') == '' then
-        reason = 'Flagged by ' .. officerName(officer)
-    end
-    setWantedLevel(prow.cid, level, reason)
-
-    return {
-        success = true,
-        message = level == 0 and 'Wanted status cleared.' or ('Wanted level set to %d/5.'):format(level),
-        wanted = { level = level, reason = level > 0 and reason or '' },
-    }
-end
-
 -- searchMedical {name} -> { found, name, items:[{action,detail,medic,created_at}] }
 -- EMS ONLY (LEO/court are rejected - medical privacy). BY NAME: the citizenid
 -- is resolved internally and never returned to the NUI.
@@ -1153,7 +973,6 @@ local handlers = {
     createReport  = handleCreateReport,
     getCameras    = handleGetCameras,
     getBodycam    = handleGetBodycam,
-    setWanted     = handleSetWanted,
     searchMedical    = handleSearchMedical,    -- EMS only
     getRecentMedical = handleGetRecentMedical, -- EMS only
 }
@@ -1413,9 +1232,6 @@ RegisterCommand('jail', function(source, args)
         "UPDATE pengu_mdt_charges SET status = 'processed', case_id = ? WHERE citizenid = ? AND status = 'outstanding'",
         { caseId or 0, cid })
 
-    -- Charges are processed -> the citizen is no longer wanted.
-    setWantedLevel(cid, 0)
-
     -- (8b) Offer the suspect a plea (only if actually jailed; fine-only sets skip it).
     if served > 0 and caseId then
         TriggerClientEvent('pengu_mdt:offerPlea', targetSrc, {
@@ -1565,104 +1381,6 @@ RegisterCommand('disbandunit', function(source)
 end, false)
 
 ----------------------------------------------------------------------
--- /wanted [id] [1-5] [reason] + /unwanted [id] - on-duty LEO only.
-----------------------------------------------------------------------
-
-RegisterCommand('wanted', function(source, args)
-    local officer = getOfficer(source)
-    if not officer then leoNotify(source, 'On-duty officers only.', 'error') return end
-    local id = tonumber(args[1])
-    local level = tonumber(args[2])
-    if not id or not level or level < 1 or level > WANTED_MAX then
-        leoNotify(source, 'Usage: /wanted [id] [1-5] [reason]', 'error')
-        return
-    end
-    local target = exports.qbx_core:GetPlayer(id)
-    if not target or not target.PlayerData then
-        leoNotify(source, 'Invalid target id.', 'error')
-        return
-    end
-    level = clampWanted(level)
-    local reason = table.concat(args, ' ', 3)
-    if reason == '' then reason = 'Flagged by ' .. officerName(officer) end
-    setWantedLevel(target.PlayerData.citizenid, level, reason)
-    leoNotify(source, ('%s is now WANTED %d/5.'):format(fullName(target.PlayerData.charinfo), level), 'success')
-end, false)
-
-RegisterCommand('unwanted', function(source, args)
-    local officer = getOfficer(source)
-    if not officer then leoNotify(source, 'On-duty officers only.', 'error') return end
-    local id = tonumber(args[1])
-    if not id then leoNotify(source, 'Usage: /unwanted [id]', 'error') return end
-    local target = exports.qbx_core:GetPlayer(id)
-    if not target or not target.PlayerData then
-        leoNotify(source, 'Invalid target id.', 'error')
-        return
-    end
-    setWantedLevel(target.PlayerData.citizenid, 0)
-    leoNotify(source, ('Wanted status cleared for %s.'):format(fullName(target.PlayerData.charinfo)), 'success')
-end, false)
-
-----------------------------------------------------------------------
--- Wanted threads: offline decay + periodic BOLO ping + connect ping.
-----------------------------------------------------------------------
-
--- DECAY: every 60s, accrue offline time per wanted citizen; 30 continuous
--- offline minutes = -1 level (row deleted at 0). Online citizens stay wanted
--- and their decay clock resets.
-CreateThread(function()
-    while true do
-        Wait(60000)
-        local rows = MySQL.query.await(WANTED_ALL_SQL) or {}
-        local seen = {}
-        for _, r in ipairs(rows) do
-            local cid = r.citizenid
-            seen[cid] = true
-            if exports.qbx_core:GetPlayerByCitizenId(cid) ~= nil then
-                offlineSecs[cid] = nil
-            else
-                local acc = (offlineSecs[cid] or 0) + 60
-                if acc >= WANTED_DECAY_SECONDS then
-                    setWantedLevel(cid, clampWanted(r.level) - 1, r.reason)
-                else
-                    offlineSecs[cid] = acc
-                end
-            end
-        end
-        for cid in pairs(offlineSecs) do -- drop clocks for rows that no longer exist
-            if not seen[cid] then offlineSecs[cid] = nil end
-        end
-    end
-end)
-
--- PING: every 10 min, BOLO every ONLINE citizen at wanted level >= 3.
-CreateThread(function()
-    while true do
-        Wait(WANTED_PING_MS)
-        local rows = MySQL.query.await(WANTED_HIGH_SQL) or {}
-        for _, r in ipairs(rows) do
-            local player = exports.qbx_core:GetPlayerByCitizenId(r.citizenid)
-            if player then
-                sendWantedAlert(player, clampWanted(r.level), r.reason or '')
-            end
-        end
-    end
-end)
-
--- CONNECT: a wanted citizen (level >= 3) coming online pings dispatch once.
-AddEventHandler('QBCore:Server:PlayerLoaded', function(player)
-    if not player or not player.PlayerData then return end
-    local cid = player.PlayerData.citizenid
-    CreateThread(function()
-        Wait(5000) -- let the ped exist before reading its coords
-        local p = exports.qbx_core:GetPlayerByCitizenId(cid)
-        if not p then return end
-        local level, reason = getWantedLevel(cid)
-        if level >= 3 then sendWantedAlert(p, level, reason) end
-    end)
-end)
-
-----------------------------------------------------------------------
 -- Resource start: create/migrate tables + index penal code
 ----------------------------------------------------------------------
 
@@ -1685,7 +1403,6 @@ CreateThread(function()
     MySQL.query.await(CREATE_IMPRISONMENTS_SQL)
     MySQL.query.await(CREATE_PRINTS_SQL)
     MySQL.query.await(CREATE_BODYCAM_SQL)
-    MySQL.query.await(CREATE_WANTED_SQL)
     MySQL.query.await(CREATE_MEDICAL_SQL)
 
     -- Idempotent migrations for pre-existing installs.
