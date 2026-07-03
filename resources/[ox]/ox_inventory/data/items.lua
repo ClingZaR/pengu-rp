@@ -302,6 +302,56 @@ return {
         weight = 1500,
     },
 
+    -- PenguRP: items required by qbx robbery scripts + pawnshop fence loop
+    ['markedbills'] = {
+        label = 'Marked Bills',
+        weight = 100,
+        stack = false,
+        description = 'Dye-stained bills from a store robbery. Must be fenced carefully.',
+    },
+
+    ['10kgoldchain'] = {
+        label = '10K Gold Chain',
+        weight = 2000,
+        stack = true,
+        description = 'A thick 10-karat gold chain.',
+    },
+
+    ['diamond'] = {
+        label = 'Diamond',
+        weight = 500,
+        stack = true,
+        description = 'A cut diamond. High street value.',
+    },
+
+    ['laptop'] = {
+        label = 'Laptop',
+        weight = 2500,
+        stack = true,
+        description = 'A laptop computer. Worth something at the right shop.',
+    },
+
+    ['tablet'] = {
+        label = 'Tablet',
+        weight = 1200,
+        stack = true,
+        description = 'A touchscreen tablet.',
+    },
+
+    ['iphone'] = {
+        label = 'iPhone',
+        weight = 300,
+        stack = true,
+        description = 'A high-end smartphone.',
+    },
+
+    ['samsungphone'] = {
+        label = 'Samsung Phone',
+        weight = 300,
+        stack = true,
+        description = 'An Android flagship phone.',
+    },
+
     ['crack_baggy'] = {
         label = 'Crack Baggy',
         weight = 100,

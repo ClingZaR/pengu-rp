@@ -1,15 +1,12 @@
--- PenguRP Store Robbery (pengu_robbery) - SERVER.
--- Register rob: client sends locKey after passing mhacking -> give black_money.
--- Safe crack:   client sends locKey after passing safecracker -> consume drill -> give black_money.
--- Location key is a 5m-grid coord string; server validates it from the player's actual server-side
--- position to prevent teleport-spoof exploits.
+-- PenguRP Safe Cracking (pengu_robbery) - SERVER.
+-- Register robbery is delegated to qbx_storerobbery (coord-based, keypad flow).
+-- This resource only handles the safecracker minigame on v_ilev_gangsafedoor MODEL.
+-- Location key = 5m-grid coord string; server recomputes from ped to prevent spoof.
 -- Cooldowns are in-memory (reset on restart).
 
 local inv = exports.ox_inventory
 
--- In-memory cooldowns
-local regStoreCd  = {}   -- locKey -> expiry (os.time)
-local regPlayerCd = {}   -- src    -> expiry
+-- In-memory cooldowns (register handlers removed; only safe remains)
 local safeStoreCd = {}   -- locKey -> expiry
 local safePlyerCd = {}   -- src    -> expiry
 
@@ -58,47 +55,6 @@ local function serverLocKey(src)
         math.floor(c.z / 5) * 5
     )
 end
-
-----------------------------------------------------------------------
--- Register robbery
-----------------------------------------------------------------------
-
-RegisterNetEvent('pengu_robbery:robRegister', function(clientKey)
-    local src = source
-    if type(clientKey) ~= 'string' then return end
-
-    -- Anti-spoof: player must actually be at the location they claim
-    local srvKey = serverLocKey(src)
-    if srvKey ~= clientKey then
-        notify(src, 'Invalid position.', false)
-        return
-    end
-
-    -- Cooldowns
-    if not cooled(regStoreCd, clientKey) then
-        local rem = math.ceil((regStoreCd[clientKey] - os.time()) / 60)
-        notify(src, ('This register was just hit. Try again in %d min.'):format(rem), false)
-        return
-    end
-    if not cooled(regPlayerCd, src) then
-        local rem = math.ceil((regPlayerCd[src] - os.time()) / 60)
-        notify(src, ('Wait %d min before another robbery.'):format(rem), false)
-        return
-    end
-
-    local amount = math.random(Config.registerMin, Config.registerMax)
-    if not inv:AddItem(src, 'black_money', amount) then
-        notify(src, 'Your pockets are full.', false)
-        return
-    end
-
-    regStoreCd[clientKey] = os.time() + Config.registerStoreCd
-    regPlayerCd[src]      = os.time() + Config.registerPlayerCd
-
-    notify(src, ('Grabbed $%d from the register. Move.'):format(amount), true)
-    dispatchAlert(src, 'Store Robbery in Progress - 10-90', '10-90')
-    awardXP(src, Config.registerXP)
-end)
 
 ----------------------------------------------------------------------
 -- Safe cracking
@@ -151,6 +107,5 @@ end)
 ----------------------------------------------------------------------
 
 AddEventHandler('playerDropped', function()
-    regPlayerCd[source] = nil
     safePlyerCd[source] = nil
 end)
