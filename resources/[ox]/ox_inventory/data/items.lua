@@ -821,6 +821,17 @@ return {
         close = false,
         image = 'WEAPON_BATTLEAXE.png',
     },
+    -- PenguRP fishing items (qw_fishing)
+    ['catfish']       = { label = 'Catfish',         weight = 500, stack = true, description = 'A catfish. Sell at the fish market.' },
+    ['largemouthbass']= { label = 'Largemouth Bass', weight = 600, stack = true, description = 'A largemouth bass.' },
+    ['redfish']       = { label = 'Redfish',         weight = 550, stack = true, description = 'A redfish.' },
+    ['salmon']        = { label = 'Salmon',          weight = 700, stack = true, description = 'A salmon.' },
+    ['stingray']      = { label = 'Stingray',        weight = 900, stack = true, description = 'A stingray. Rare catch.' },
+    ['stripedbass']   = { label = 'Striped Bass',    weight = 650, stack = true, description = 'A striped bass.' },
+    ['whale']         = { label = 'Whale (Toy)',     weight = 200, stack = true, description = 'A tiny toy whale. Very rare catch.' },
+    ['fishbait']      = { label = 'Fish Bait',       weight = 50,  stack = true, description = 'Bait for fishing.' },
+    ['bucket']        = { label = 'Bait Bucket',     weight = 300, stack = false, description = 'A bucket of bait. Use near water to fish.' },
+
     ['fishingrod'] = {
         label = 'Fishing Rod',
         description = 'Required to fish.',
@@ -834,6 +845,14 @@ return {
     ['corn']          = { label = 'Corn',           description = 'Fresh harvested corn.',                          weight = 200, stack = true,  close = true },
     ['potato']        = { label = 'Potato',         description = 'Fresh potato.',                                  weight = 300, stack = true,  close = true },
     ['carrot']        = { label = 'Carrot',         description = 'Fresh carrot.',                                  weight = 150, stack = true,  close = true },
+    -- PenguRP carcass items (mana_hunting). Grade stored in metadata.type; image in metadata.image.
+    ['carcass_boar']      = { label = 'Boar Carcass',     weight = 3000, stack = false, description = 'A harvested boar. Sell at the slaughter pen.' },
+    ['carcass_hawk']      = { label = 'Hawk Carcass',     weight = 500,  stack = false, description = 'A harvested chicken hawk.' },
+    ['carcass_cormorant'] = { label = 'Cormorant Carcass',weight = 400,  stack = false, description = 'A harvested cormorant.' },
+    ['carcass_coyote']    = { label = 'Coyote Carcass',   weight = 1200, stack = false, description = 'A harvested coyote.' },
+    ['carcass_deer']      = { label = 'Deer Carcass',     weight = 5000, stack = false, description = 'A harvested deer. Drag to your vehicle.' },
+    ['carcass_mtlion']    = { label = 'Mountain Lion Carcass', weight = 4000, stack = false, description = 'A harvested mountain lion.' },
+    ['carcass_rabbit']    = { label = 'Rabbit Carcass',   weight = 600,  stack = false, description = 'A harvested rabbit.' },
     ['raw_venison']   = { label = 'Raw Venison',    description = 'Fresh venison. Butcher for better value.',       weight = 600, stack = true,  close = true },
     ['venison_steak'] = { label = 'Venison Steak',  description = 'Butchered venison. Premium price at market.',   weight = 400, stack = true,  close = true },
     ['rabbit_fur']    = { label = 'Rabbit Fur',     description = 'Soft pelt. Tan with others into leather.',      weight = 200, stack = true,  close = true },
