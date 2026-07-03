@@ -121,6 +121,7 @@ Config.dealerTypes = {
         sells  = {
             { item = 'WEAPON_CROWBAR',   label = 'Crowbar',           price = 600,  count = 1, minLevel = 1 },
             { item = 'lockpick',         label = 'Lockpick',          price = 250,  count = 1, minLevel = 1 },
+            { item = 'trojan_usb',       label = 'Trojan USB',        price = 250,  count = 1, minLevel = 1 },
             { item = 'screwdriverset',   label = 'Screwdriver Set',   price = 400,  count = 1, minLevel = 1 },
             { item = 'repairkit',        label = 'Repair Kit',        price = 800,  count = 1, minLevel = 1 },
             { item = 'advancedlockpick', label = 'Advanced Lockpick', price = 1200, count = 1, minLevel = 2 },

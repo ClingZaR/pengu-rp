@@ -74,7 +74,9 @@ return {
 			vec3(2748.0, 3473.0, 55.67),
 			vec3(342.99, -1298.26, 32.51)
 		}, targets = {
-			{ loc = vec3(2746.8, 3473.13, 55.67), length = 0.6, width = 3.0, heading = 65.0, minZ = 55.0, maxZ = 56.8, distance = 3.0 }
+			{ loc = vec3(2746.8, 3473.13, 55.67), length = 0.6, width = 3.0, heading = 65.0, minZ = 55.0, maxZ = 56.8, distance = 3.0 },
+			-- PenguRP: Davis/Forum-Dr location was missing a target zone (blip showed, no interaction).
+			{ loc = vec3(342.99, -1298.26, 32.51), length = 0.6, width = 3.0, heading = 0.0, minZ = 32.0, maxZ = 33.8, distance = 3.0 },
 		}
 	},
 
