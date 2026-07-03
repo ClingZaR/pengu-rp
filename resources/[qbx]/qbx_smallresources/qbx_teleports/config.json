@@ -1,0 +1,54 @@
+{
+    "teleports": [
+        [
+            {
+                "coords": [3540.74, 3675.59, 20.99, 167.5],
+                "allowVehicle": false,
+                "drawText": "Labs Elevator",
+                "ignoreGround": true
+            },
+            {
+                "coords": [3540.74, 3675.59, 28.11, 172.5],
+                "allowVehicle": false,
+                "drawText": "Labs Elevator"
+            }
+        ],
+        [
+            {
+                "coords": [909.49, -1589.22, 30.51, 91.74],
+                "allowVehicle": false,
+                "drawText": "Coke Processing"
+            },
+            {
+                "coords": [1088.81, -3187.57, -38.99, 181.2],
+                "allowVehicle": false,
+                "drawText": "Coke Processing"
+            }
+        ],
+        [
+            {
+                "coords": [-1573.93, -3094.16, 13.37, 0.0],
+                "allowVehicle": false,
+                "drawText": "Enter Galaxy Nightclub",
+                "ignoreGround": true
+            },
+            {
+                "coords": [-1604.66, -3012.58, -77.5, 270.0],
+                "allowVehicle": false,
+                "drawText": "Exit Galaxy Nightclub"
+            }
+        ],
+        [
+            {
+                "coords": [308.01, -592.38, 43.28, 339.0],
+                "allowVehicle": false,
+                "drawText": "Enter Hospital ER"
+            },
+            {
+                "coords": [301.76, -582.53, 43.28, 163.0],
+                "allowVehicle": false,
+                "drawText": "Hospital Entrance"
+            }
+        ]
+    ]
+}
