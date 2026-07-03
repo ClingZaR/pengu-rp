@@ -46,6 +46,12 @@ return {
         {
             item = 'markedbills',
             price = math.random(270, 420)
+        },
+        -- PenguRP: goldbar from store safes + bank heists + jewelry melting. Priced below a raw
+        -- goldchain ($200-400) so melting chains is slightly worse than fencing them directly.
+        {
+            item = 'goldbar',
+            price = math.random(150, 300)
         }
     },
     meltingItems = { -- meltTime is amount of time in minutes per item
